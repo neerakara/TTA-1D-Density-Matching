@@ -41,7 +41,8 @@ parser.add_argument('--tta_vars', default = "bn") # bn / norm
 parser.add_argument('--match_moments', default = "first") # first / firsttwo / all
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
-parser.add_argument('--batch_randomized', type = int, default = 0) # 1 / 0
+parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--alpha', type = float, default = 100.0) # 100.0 / 1000.0
 args = parser.parse_args()
 
@@ -114,7 +115,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     exp_str = exp_str + '_bsize' + str(args.b_size)
     exp_str = exp_str + '_rand' + str(args.batch_randomized)
     exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
-    exp_str = exp_str + '_z_subsample/' 
+    exp_str = exp_str + '_rand' + str(args.features_randomized)
+    exp_str = exp_str + '/' # _z_subsample
     exp_str = exp_str + subject_string
     log_dir_tta = log_dir + exp_str
     tensorboard_dir_tta = tensorboard_dir + exp_str
@@ -131,17 +133,15 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     test_image = imts[subject_id_start_slice:subject_id_end_slice,:,:]  
     test_image_gt = gtts[subject_id_start_slice:subject_id_end_slice,:,:]  
 
-    logging.info(test_image.shape)
-
+    # =============================================
     # These two subjects have an exceptionally higher resolution along the z-direction
     # All SD subjects have res along the z-direction = 3mm or 4mm
     # These two subjects have res along the z-direction ~ 2.2mm
-    if (exp_config.test_dataset == 'PROMISE') and (sub_num in [8, 19]):
-        # skipping every third slice for the TTA computations
-        test_image = test_image[np.mod(np.arange(test_image.shape[0]), 3) != 0, :, :]
-        test_image_gt = test_image_gt[np.mod(np.arange(test_image_gt.shape[0]), 3) != 0, :, :]
-
-    logging.info(test_image.shape)
+    # =============================================
+    # if (exp_config.test_dataset == 'PROMISE') and (sub_num in [8, 19]):
+    #     # skipping every third slice for the TTA computations
+    #     test_image = test_image[np.mod(np.arange(test_image.shape[0]), 3) != 0, :, :]
+    #     test_image_gt = test_image_gt[np.mod(np.arange(test_image_gt.shape[0]), 3) != 0, :, :]
 
     test_image_gt = test_image_gt.astype(np.uint8)
 
@@ -231,10 +231,19 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                 # 5_1 (8192, 64), 5_2 (8192, 64), 6_1 (32768, 32), 6_2 (32768, 32)
                 # 7_1 (131072, 16), 7_2 (131072, 16)
 
-                # Can you subsample the feature maps, and relieve the memory constraint to some extent?
+                # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
                 if args.feature_subsampling_factor != 1:
-                    features_td = features_td[::args.feature_subsampling_factor, :]
-                
+                    if args.features_randomized == 0:
+                        features_td = features_td[::args.feature_subsampling_factor, :]
+                    elif args.features_randomized == 1:
+                        # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
+                        # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
+                        random_indices = tf.random.uniform(shape=[features_td.shape[0].value // args.feature_subsampling_factor],
+                                                           minval=0,
+                                                           maxval=features_td.shape[0].value - 1,
+                                                           dtype=tf.int32)
+                        features_td = tf.gather(features_td, random_indices, axis=0)
+
                 features_td = tf.tile(tf.expand_dims(features_td, 0), multiples = [x_pdf_pl.shape[0], 1, 1])
                 x_pdf_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x_pdf_pl, -1), -1), multiples = [1, features_td.shape[1], features_td.shape[2]])
 
