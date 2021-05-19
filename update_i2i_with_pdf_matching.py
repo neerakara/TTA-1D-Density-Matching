@@ -269,6 +269,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
 
         # L2 distance between PDFs, with each coordinate scaled according to the log-variance across the SD subjects at that intensity value.
         epsilon = 1e-10
+        loss_all_std_w1_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, 0.001 * sd_pdf_std_pl + 1e-3))) # mean over all channels of all layers
         loss_all_std_w2_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
         loss_all_std_w3_op = tf.reduce_mean(tf.math.square(tf.math.multiply(td_pdfs - sd_pdf_pl, 0.1 * tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
 
@@ -305,6 +306,9 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         if args.match_moments == 'all': 
             loss_op = loss_all_op
         # match the PDFs, with less weight for points where the variance over the SD subject is high
+        elif args.match_moments == 'all_std': 
+            loss_op = loss_all_std_w1_op
+        # match the PDFs, with less weight for points where the variance over the SD subject is high
         elif args.match_moments == 'all_std_log': 
             loss_op = loss_all_std_w2_op
         # match the PDFs, with less weight for points where the variance over the SD subject is high
@@ -331,8 +335,9 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         # ================================================================
         tf.summary.scalar('loss/tta', loss_op)         
         tf.summary.scalar('loss/1D_all', loss_all_op)
-        tf.summary.scalar('loss/1D_all_std', loss_all_std_w2_op)
-        tf.summary.scalar('loss/1D_all_std_log_multipled', loss_all_std_w3_op)
+        tf.summary.scalar('loss/1D_all_std_w1', loss_all_std_w1_op) # divide by std
+        tf.summary.scalar('loss/1D_all_std', loss_all_std_w2_op) # divide by log-std
+        tf.summary.scalar('loss/1D_all_std_log_multipled', loss_all_std_w3_op) # multiply with log-std
         tf.summary.scalar('loss/1D_one', loss_one_op)
         tf.summary.scalar('loss/1D_onetwo', loss_onetwo_op)
         tf.summary.scalar('loss/1D_onetwokl', loss_onetwokl_op)
