@@ -74,7 +74,7 @@ if exp_config.train_dataset == 'NCI':
     num_train_subjects = orig_data_siz_z_train.shape[0] 
 
 # ================================================================
-# load test data
+# load PROMISE
 # ================================================================
 if exp_config.test_dataset == 'PROMISE':
     data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
@@ -98,7 +98,26 @@ if exp_config.test_dataset == 'PROMISE':
     num_test_subjects = orig_data_siz_z.shape[0] 
     ids = np.arange(num_test_subjects)
 
-    logging.info(name_test_subjects)
+# ================================================================
+# load USZ
+# ================================================================
+elif exp_config.test_dataset == 'USZ':
+
+    image_depth = 32
+    z_resolution = 2.5
+
+    data_pros = data_pirad_erc.load_data(input_folder = sys_config.orig_data_root_pirad_erc,
+                                         preproc_folder = sys_config.preproc_folder_pirad_erc,
+                                         idx_start = 0,
+                                         idx_end = 20,
+                                         size = image_size,
+                                         target_resolution = target_resolution,
+                                         labeller = 'ek')
+    
+    imts, gtts = [data_pros['images'], data_pros['labels']]
+    name_test_subjects = data_pros['patnames']
+    orig_data_siz_z = data_pros['nz'][:]
+    orig_data_res_z = data_pros['pz'][:]
 
 # ================================================================
 # Run TTA for the asked subject
@@ -144,6 +163,9 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     #     test_image_gt = test_image_gt[np.mod(np.arange(test_image_gt.shape[0]), 3) != 0, :, :]
 
     test_image_gt = test_image_gt.astype(np.uint8)
+
+    logging.info(test_image.shape)
+    logging.info(orig_data_res_z[sub_num])
 
     # ================================================================
     # build the TF graph
