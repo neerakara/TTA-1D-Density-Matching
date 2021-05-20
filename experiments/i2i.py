@@ -5,7 +5,7 @@ import tensorflow as tf
 # test settings
 # ======================================================================
 train_dataset = 'NCI' # 'NCI' # CALTECH / HCPT2 / HCPT1
-test_dataset = 'PROMISE' # 'PROMISE' # CALTECH / HCPT2 / HCPT1 / STANFORD
+test_dataset = 'PROMISE' # 'PROMISE' / USZ # CALTECH / HCPT2 / HCPT1 / STANFORD
 whole_gland_results = True
 normalize = True
 run_number = 1

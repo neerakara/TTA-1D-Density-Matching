@@ -9,8 +9,9 @@ import argparse
 
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
+parser.add_argument('--test_dataset', default = "PROMISE") # USZ / PROMISE
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "all_std") # first / firsttwo / all
+parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
@@ -33,12 +34,16 @@ exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '/' 
 log_dir_tta = log_dir_sd + exp_str
 
-test_dataset_name = exp_config.test_dataset
+test_dataset_name = args.test_dataset
 
 if test_dataset_name == 'PROMISE':
     
-    with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
-        lines = f.readlines()
+    if exp_config.normalize == True:
+        with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+            lines = f.readlines()
+    else:
+        with open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+            lines = f.readlines()
     
     pat_id = []
     dice = []
@@ -59,6 +64,37 @@ if test_dataset_name == 'PROMISE':
         print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
         if c == 9:
             print(str(sorted_results[0,0]) + ',' + str(sorted_results[1,0]))
+    print('====================================')
+    print(lines[31])
+    print('====================================')
+
+elif test_dataset_name == 'USZ':
+    
+    if exp_config.normalize == True:
+        with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+            lines = f.readlines()
+    else:
+        with open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+            lines = f.readlines()
+    
+    pat_id = []
+    dice = []
+    for count in range(2, 22):
+        line = lines[count]
+        pat_id.append(int(line[6:line.find(':')]))
+        line = line[line.find(':') + 39 : ]
+        dice.append(float(line[:line.find(',')]))
+
+    pat_id = np.array(pat_id)
+    dice = np.array(dice)
+    results = np.stack((pat_id, dice))
+
+    sorted_results = np.stack((np.sort(results[0,:]),
+                               results[1, np.argsort(results[0,:])]))
+
+    print('========== sorted results ==========')
+    for c in range(0, sorted_results.shape[1]):
+        print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
     print('====================================')
     print(lines[31])
     print('====================================')

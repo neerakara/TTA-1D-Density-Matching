@@ -35,6 +35,8 @@ from experiments import i2i as exp_config
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # read arguments
+parser.add_argument('--train_dataset', default = "NCI") # NCI
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--tta_vars', default = "bn") # bn / norm
@@ -57,7 +59,7 @@ tensorboard_dir = os.path.join(sys_config.tensorboard_root, exp_config.expname_i
 # ================================================================
 # load training data
 # ================================================================
-if exp_config.train_dataset == 'NCI':
+if args.train_dataset == 'NCI':
     logging.info('Reading NCI images...')    
     logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
     data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
@@ -76,7 +78,7 @@ if exp_config.train_dataset == 'NCI':
 # ================================================================
 # load PROMISE
 # ================================================================
-if exp_config.test_dataset == 'PROMISE':
+if args.test_dataset == 'PROMISE':
     data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
                                                             preprocessing_folder = sys_config.preproc_folder_promise,
                                                             size = exp_config.image_size,
@@ -101,7 +103,7 @@ if exp_config.test_dataset == 'PROMISE':
 # ================================================================
 # load USZ
 # ================================================================
-elif exp_config.test_dataset == 'USZ':
+elif args.test_dataset == 'USZ':
 
     image_depth = 32
     z_resolution = 2.5
@@ -127,7 +129,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     logging.info(str(name_test_subjects[sub_num])[2:-1])
 
     subject_name = str(name_test_subjects[sub_num])[2:-1]
-    subject_string = exp_config.test_dataset + '_' + subject_name
+    subject_string = args.test_dataset + '_' + subject_name
 
     exp_str = exp_config.tta_string + 'tta_vars_' + args.tta_vars 
     exp_str = exp_str + '/moments_' + args.match_moments
@@ -157,7 +159,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     # All SD subjects have res along the z-direction = 3mm or 4mm
     # These two subjects have res along the z-direction ~ 2.2mm
     # =============================================
-    # if (exp_config.test_dataset == 'PROMISE') and (sub_num in [8, 19]):
+    # if (args.test_dataset == 'PROMISE') and (sub_num in [8, 19]):
     #     # skipping every third slice for the TTA computations
     #     test_image = test_image[np.mod(np.arange(test_image.shape[0]), 3) != 0, :, :]
     #     test_image_gt = test_image_gt[np.mod(np.arange(test_image_gt.shape[0]), 3) != 0, :, :]
@@ -289,6 +291,9 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         # L2 distance between PDFs
         loss_all_op = tf.reduce_mean(tf.math.square(td_pdfs - sd_pdf_pl)) # mean over all channels of all layers
 
+        # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
+        loss_all_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdf_pl, tf.math.log(tf.math.divide(sd_pdf_pl, td_pdfs + 1e-5) + 1e-2)), axis = 1))
+
         # L2 distance between PDFs, with each coordinate scaled according to the log-variance across the SD subjects at that intensity value.
         epsilon = 1e-10
         loss_all_std_w1_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, 0.001 * sd_pdf_std_pl + 1e-3))) # mean over all channels of all layers
@@ -308,6 +313,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         sd_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(sd_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
         sd_pdf_variances = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, sd_pdf_variances_tmp), axis = 1) # [Nc]
         loss_onetwo_op = tf.reduce_mean(tf.math.square(td_pdf_means - sd_pdf_means) + tf.math.square(td_pdf_variances - sd_pdf_variances))
+
+        # D_KL (N(\mu_s, \sigma_s), N(\mu_t, \sigma_t)) = log(\sigma_t**2 / \sigma_s**2) + (\sigma_s**2 + (\mu_s - \mu_t)**2) / (\sigma_t**2)
         loss_onetwokl_op = tf.reduce_mean(tf.math.log(td_pdf_variances / sd_pdf_variances) + (sd_pdf_variances + (sd_pdf_means - td_pdf_means)**2) / td_pdf_variances)
 
         # compute CFs of the source and target domains
@@ -327,6 +334,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         # match the PDFs 
         if args.match_moments == 'all': 
             loss_op = loss_all_op
+        elif args.match_moments == 'all_kl': 
+            loss_op = loss_all_kl_op
         # match the PDFs, with less weight for points where the variance over the SD subject is high
         elif args.match_moments == 'all_std': 
             loss_op = loss_all_std_w1_op
@@ -357,6 +366,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         # ================================================================
         tf.summary.scalar('loss/tta', loss_op)         
         tf.summary.scalar('loss/1D_all', loss_all_op)
+        tf.summary.scalar('loss/1D_all_kl', loss_all_kl_op)
         tf.summary.scalar('loss/1D_all_std_w1', loss_all_std_w1_op) # divide by std
         tf.summary.scalar('loss/1D_all_std', loss_all_std_w2_op) # divide by log-std
         tf.summary.scalar('loss/1D_all_std_log_multipled', loss_all_std_w3_op) # multiply with log-std
@@ -641,7 +651,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                 label_predicted = label_predicted[:test_image.shape[0], ...]
                 image_normalized = image_normalized[:test_image.shape[0], ...]
 
-            if exp_config.test_dataset is 'PROMISE':
+            if args.test_dataset == 'PROMISE':
                 label_predicted[label_predicted!=0] = 1
             dice_wrt_gt = met.f1_score(test_image_gt.flatten(), label_predicted.flatten(), average=None) 
             summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice: np.mean(dice_wrt_gt[1:])}), step)

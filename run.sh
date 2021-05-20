@@ -17,10 +17,10 @@ module load cuda/9.0.176 cudnn/7.1.4
 #  select[gpu_mtotal0>=10240] --> GeForce RTX 2080 Ti major
 #  select[gpu_mtotal0>=23000] --> TITAN RTX major
 
-bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/update_i2i_with_pdf_matching.py \
---test_sub_num $1 --tta_vars $2 --match_moments $3
+# bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/update_i2i_with_pdf_matching.py \
+# --test_dataset $1 --test_sub_num $2 --tta_vars $3 --match_moments $4
 
-# bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/evaluate.py
-# # --tta_vars $1 --match_moments $2 --b_size $3
+bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/evaluate.py \
+--test_dataset $1 --tta_vars $2 --match_moments $3
 
 echo "Reached end of job file."

@@ -303,23 +303,14 @@ def _release_tmp_memory(img_list,
 # function to read a single subjects image and labels without any pre-processing
 # ===============================================================
 def load_without_size_preprocessing(input_folder,
-                                    idx,
+                                    subject_name,
                                     labeller):
-    
-    # ===============================
-    # read all the patient folders from the base input folder
-    # ===============================
-    folder_list = []
-    for folder in os.listdir(input_folder):
-        folder_path = os.path.join(input_folder, folder)        
-        if os.path.isdir(folder_path) and 't2_tse_tra.nii.gz' in os.listdir(folder_path):
-            if 'segmentation_' + labeller + '.nii.gz' in os.listdir(folder_path) or 'segmentation_tra_' +  labeller + '.nii.gz' in os.listdir(folder_path):
-                folder_list.append(folder_path)
 
     # ==================
     # read the image file
-    # ==================                        
-    image, _, _ = utils.load_nii(folder_list[idx] + '/t2_tse_tra_n4.nii.gz')
+    # ==================              
+    folder_path = input_folder + subject_name
+    image, _, _ = utils.load_nii(folder_path + '/t2_tse_tra_n4.nii.gz')
     # ============
     # normalize the image to be between 0 and 1
     # ============
@@ -328,10 +319,10 @@ def load_without_size_preprocessing(input_folder,
     # ==================
     # read the label file
     # ==================        
-    if 'segmentation_' + labeller + '.nii.gz' in os.listdir(folder_list[idx]):
-        label, _, _ = utils.load_nii(folder_list[idx] + '/segmentation_' + labeller + '.nii.gz')
-    elif 'segmentation_tra_' + labeller + '.nii.gz' in os.listdir(folder_list[idx]):
-        label, _, _ = utils.load_nii(folder_list[idx] + '/segmentation_tra_' + labeller + '.nii.gz')    
+    if 'segmentation_' + labeller + '.nii.gz' in os.listdir(folder_path):
+        label, _, _ = utils.load_nii(folder_path + '/segmentation_' + labeller + '.nii.gz')
+    elif 'segmentation_tra_' + labeller + '.nii.gz' in os.listdir(folder_path):
+        label, _, _ = utils.load_nii(folder_path + '/segmentation_tra_' + labeller + '.nii.gz')    
     # ================== 
     # remove extra label from some images
     # ================== 

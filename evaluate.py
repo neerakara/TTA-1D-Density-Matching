@@ -25,11 +25,13 @@ import argparse
 
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "firsttwo_kl") # first / firsttwo / all
-parser.add_argument('--b_size', type = int, default = 2) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
+parser.add_argument('--test_dataset', default = "PROMISE") # USZ / PROMISE
+parser.add_argument('--tta_vars', default = "bn") # bn / norm
+parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
+parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 args = parser.parse_args()
 
 # ==================================================================
@@ -45,6 +47,7 @@ exp_str = exp_str + '/moments_' + args.match_moments
 exp_str = exp_str + '_bsize' + str(args.b_size)
 exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
+exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '/' 
 
 log_dir_tta = log_dir_sd + exp_str
@@ -144,9 +147,9 @@ def predict_segmentation(subject_name,
         # ================================================================
         # Restore the normalization network parameters
         # ================================================================
-        if normalize is True:
+        if normalize == True:
             logging.info('============================================================')
-            subject_string = exp_config.test_dataset + '_' + subject_name
+            subject_string = args.test_dataset + '_' + subject_name
             path_to_model = log_dir_tta + subject_string + '/models/'
             checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
             logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
@@ -220,9 +223,9 @@ def main():
     # ===================================
     # read the test images
     # ===================================
-    test_dataset_name = exp_config.test_dataset
+    test_dataset_name = args.test_dataset
     
-    if test_dataset_name is 'HCPT1':
+    if test_dataset_name == 'HCPT1':
         logging.info('Reading HCPT1 images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
         
@@ -251,7 +254,7 @@ def main():
         orig_data_siz_y = data_brain_test['ny'][:]
         orig_data_siz_z = data_brain_test['nz'][:]
         
-    elif test_dataset_name is 'HCPT2':
+    elif test_dataset_name == 'HCPT2':
         logging.info('Reading HCPT2 images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
         
@@ -280,7 +283,7 @@ def main():
         orig_data_siz_y = data_brain_test['ny'][:]
         orig_data_siz_z = data_brain_test['nz'][:]
         
-    elif test_dataset_name is 'CALTECH':
+    elif test_dataset_name == 'CALTECH':
         logging.info('Reading CALTECH images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')
         
@@ -310,7 +313,7 @@ def main():
         orig_data_siz_y = data_brain_test['ny'][:]
         orig_data_siz_z = data_brain_test['nz'][:]
 
-    elif test_dataset_name is 'NCI':
+    elif test_dataset_name == 'NCI':
         data_pros = data_nci.load_and_maybe_process_data(input_folder=sys_config.orig_data_root_nci,
                                                          preprocessing_folder=sys_config.preproc_folder_nci,
                                                          size=image_size,
@@ -331,7 +334,7 @@ def main():
         num_test_subjects = orig_data_siz_z.shape[0]
         ids = np.arange(num_test_subjects)
 
-    elif test_dataset_name is 'PIRAD_ERC':
+    elif test_dataset_name == 'USZ':
 
         idx_start = 0
         idx_end = 20
@@ -356,7 +359,7 @@ def main():
 
         num_test_subjects = orig_data_siz_z.shape[0]
 
-    elif test_dataset_name is 'PROMISE':
+    elif test_dataset_name == 'PROMISE':
         data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
                                                              preprocessing_folder = sys_config.preproc_folder_promise,
                                                              size = exp_config.image_size,
@@ -380,13 +383,13 @@ def main():
     # ================================   
     # open a text file for writing the mean dice scores for each subject that is evaluated
     # ================================
-    if exp_config.whole_gland_results is True:
-        if exp_config.normalize is True:
+    if exp_config.whole_gland_results == True:
+        if exp_config.normalize == True:
             results_file = open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "w")
         else:
             results_file = open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "w")
     else:
-        if exp_config.normalize is True:
+        if exp_config.normalize == True:
             results_file = open(log_dir_tta + test_dataset_name + '_test.txt', "w")
         else:
             results_file = open(log_dir_sd + test_dataset_name + '_test.txt', "w")
@@ -412,10 +415,12 @@ def main():
         subject_name = str(name_test_subjects[sub_num])[2:-1]
         logging.info('============================================================')
         logging.info('Subject id: %s' %sub_num)
+        logging.info(subject_name)
 
         # If the 'models' directory does not exist for this subject, move onto the next one
-        if not tf.gfile.Exists(log_dir_tta + exp_config.test_dataset + '_' + subject_name + '/models/'):
-            continue
+        if exp_config.normalize == True:
+            if not tf.gfile.Exists(log_dir_tta + test_dataset_name + '_' + subject_name + '/models/'):
+                continue
     
         # ==================================================================
         # predict segmentation at the pre-processed resolution
@@ -427,7 +432,7 @@ def main():
         # ==================================================================
         # read the original segmentation mask
         # ==================================================================
-        if test_dataset_name is 'HCPT1':
+        if test_dataset_name == 'HCPT1':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_hcp.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_hcp,
                                                                               idx = ids[sub_num],
@@ -436,7 +441,7 @@ def main():
                                                                               depth = image_depth)
             num_rotations = 0  
             
-        elif test_dataset_name is 'HCPT2':
+        elif test_dataset_name == 'HCPT2':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_hcp.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_hcp,
                                                                               idx = ids[sub_num],
@@ -445,7 +450,7 @@ def main():
                                                                               depth = image_depth)
             num_rotations = 0  
 
-        elif test_dataset_name is 'CALTECH':
+        elif test_dataset_name == 'CALTECH':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_abide.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_abide,
                                                                                site_name = 'CALTECH',
@@ -453,7 +458,7 @@ def main():
                                                                                depth = image_depth)
             num_rotations = 0
 
-        elif test_dataset_name is 'NCI':
+        elif test_dataset_name == 'NCI':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_nci.load_without_size_preprocessing(sys_config.orig_data_root_nci,
                                                                                cv_fold_num=1,
@@ -461,14 +466,14 @@ def main():
                                                                                idx=ids[sub_num])
             num_rotations = 0
 
-        elif test_dataset_name is 'PIRAD_ERC':
+        elif test_dataset_name == 'USZ':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_pirad_erc.load_without_size_preprocessing(sys_config.orig_data_root_pirad_erc,
-                                                                                     ids[sub_num],
+                                                                                     subject_name,
                                                                                      labeller='ek')
             num_rotations = -3
 
-        elif test_dataset_name is 'PROMISE':
+        elif test_dataset_name == 'PROMISE':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_promise.load_without_size_preprocessing(sys_config.preproc_folder_promise,
                                                                                    subject_name[4:6])
@@ -488,17 +493,17 @@ def main():
         # ==================================================================
         # If only whole-gland comparisions are desired, merge the labels in both ground truth segmentations as well as the predictions
         # ==================================================================
-        if exp_config.whole_gland_results is True:
+        if exp_config.whole_gland_results == True:
             predicted_labels_orig_res_and_size[predicted_labels_orig_res_and_size!=0] = 1
             labels_orig[labels_orig!=0] = 1
             nl = 2
-            if exp_config.normalize is True:
+            if exp_config.normalize == True:
                 savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name + '_whole_gland.png'
             else:
                 savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name + '_whole_gland.png'
         else:
             nl = nlabels
-            if exp_config.normalize is True:
+            if exp_config.normalize == True:
                 savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name + '.png'
             else:
                 savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name + '.png'
@@ -516,7 +521,7 @@ def main():
         # compute Hausforff distance at the original resolution
         # ==================================================================   
         compute_hsd = False
-        if compute_hsd is True:
+        if compute_hsd == True:
             hsd_per_label_this_subject = utils.compute_surface_distance(y1 = labels_orig,
                                                                         y2 = predicted_labels_orig_res_and_size,
                                                                         nlabels = nl)
