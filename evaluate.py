@@ -32,6 +32,7 @@ parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3
 args = parser.parse_args()
 
 # ==================================================================
@@ -48,6 +49,7 @@ exp_str = exp_str + '_bsize' + str(args.b_size)
 exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
 exp_str = exp_str + '_rand' + str(args.features_randomized)
+exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
 exp_str = exp_str + '/' 
 
 log_dir_tta = log_dir_sd + exp_str

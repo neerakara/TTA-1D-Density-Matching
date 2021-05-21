@@ -45,6 +45,7 @@ parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 parser.add_argument('--alpha', type = float, default = 100.0) # 100.0 / 1000.0
 args = parser.parse_args()
 
@@ -137,6 +138,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
     exp_str = exp_str + '_rand' + str(args.batch_randomized)
     exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
     exp_str = exp_str + '_rand' + str(args.features_randomized)
+    exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
     exp_str = exp_str + '/' # _z_subsample
     exp_str = exp_str + subject_string
     log_dir_tta = log_dir + exp_str
@@ -233,6 +235,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         # placeholder for SD PDFs (mean over all SD subjects). These will be extracted after loading the SD trained model.
         # The shapes have to be hard-coded. Can't get the tile operations to work otherwise..
         sd_pdf_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs') # shape [num_channels, num_points_along_intensity_range]
+        # placeholder for the standard deviation in the SD KDEs over the SD subjects.
         sd_pdf_std_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs_std') # shape [num_channels, num_points_along_intensity_range]
         # placeholder for the points at which the PDFs are evaluated
         x_pdf_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs') # shape [num_points_along_intensity_range]
@@ -300,13 +303,13 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
         loss_all_std_w2_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
         loss_all_std_w3_op = tf.reduce_mean(tf.math.square(tf.math.multiply(td_pdfs - sd_pdf_pl, 0.1 * tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
 
-        # compute means from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
+        # compute means (across spatial locations and the batch axis) from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
         x_pdf_tiled = tf.tile(tf.expand_dims(x_pdf_pl, 0), multiples = [td_pdfs.shape[0], 1]) # [Nc, Nx]
         td_pdf_means = tf.reduce_sum(tf.math.multiply(td_pdfs, x_pdf_tiled), axis = 1) # [Nc]
         sd_pdf_means = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, x_pdf_tiled), axis = 1) # [Nc]
         loss_one_op = tf.reduce_mean(tf.math.square(td_pdf_means - sd_pdf_means)) # [Nc] (before reduce_mean)
 
-        # compute variances from the PDFs, using the means computed above
+        # compute variances (across spatial locations and the batch axis) from the PDFs, using the means computed above
         # $ \sigma^2 = \sum_{i=xmin}^{xmax} (x - \mu)^2 * p(x) $
         td_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(td_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
         td_pdf_variances = tf.reduce_sum(tf.math.multiply(td_pdfs, td_pdf_variances_tmp), axis = 1) # [Nc]
@@ -521,10 +524,10 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
             # ================================================================
             np.save(sd_pdfs_filename, pdfs_sd) # [num_subjects, num_channels, num_x_points]
 
-        pdfs_sd_mean = np.mean(pdfs_sd, axis = 0)
-        pdfs_sd_std = np.std(pdfs_sd, axis = 0)
-        logging.info(np.max(pdfs_sd_mean))
-        logging.info(np.max(pdfs_sd_std))
+        # pdfs_sd_mean = np.mean(pdfs_sd, axis = 0)
+        # pdfs_sd_std = np.std(pdfs_sd, axis = 0)
+        # logging.info(np.max(pdfs_sd_mean))
+        # logging.info(np.max(pdfs_sd_std))
         # variance is quite small compared to the mean at each point on the PDF
         # --> This is true even when data augmentation is used while computing the SD PDFs
         # --> Seems like the network maps all the training images to similar features already from the first layers... (!?)
@@ -566,7 +569,41 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                     sess.run(mean_assign_ops[count], feed_dict={tmp_mean_pl: td_means_this_layer})
                     sess.run(variance_assign_ops[count], feed_dict={tmp_variance_pl: td_variances_this_layer})                
                     count = count + 1
-                    
+
+        # ================================================================
+        # Determine which SD subject has the closest KDE to the current target image
+        # (in terms of D_KL)
+        # ================================================================
+        if args.match_with_sd == 3 or args.match_with_sd == 4:
+            kl_td_sd_subjects = np.zeros((pdfs_sd.shape[0]))
+            num_runs_for_each_sd_subject = 10
+            for sd_sub_num in range(pdfs_sd.shape[0]):
+                kl_td_sd_subject = 0.0
+                for _ in range(num_runs_for_each_sd_subject):
+                    x_batch = test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :]
+
+                    if args.match_moments == 'all_kl':
+                        kl_td_sd_subject = kl_td_sd_subject + sess.run(loss_all_kl_op,
+                                                                       feed_dict={images_pl: np.expand_dims(x_batch, axis=-1),
+                                                                                  sd_pdf_pl: pdfs_sd[sd_sub_num, :, :], 
+                                                                                  x_pdf_pl: x_values, 
+                                                                                  alpha_pl: alpha})
+
+                    elif args.match_moments == 'firsttwo_kl':
+                        kl_td_sd_subject = kl_td_sd_subject + sess.run(loss_onetwokl_op,
+                                                                       feed_dict={images_pl: np.expand_dims(x_batch, axis=-1),
+                                                                                  sd_pdf_pl: pdfs_sd[sd_sub_num, :, :], 
+                                                                                  x_pdf_pl: x_values, 
+                                                                                  alpha_pl: alpha})
+                                                                                  
+                kl_td_sd_subjects[sd_sub_num] = kl_td_sd_subject / num_runs_for_each_sd_subject
+
+            logging.info("D_KL with all SD subjects --> ")
+            logging.info(kl_td_sd_subjects)
+            sd_closest_sub = np.argsort(kl_td_sd_subjects)[0]
+            logging.info('SD subject ' + str(sd_closest_sub) + ' is closest to this TD subject.')
+            pdfs_sd_close = pdfs_sd[np.argsort(kl_td_sd_subjects)[0:6], :, :] # select 5 close subjects
+        
         # ================================================================
         # TTA iterations
         # ================================================================
@@ -580,7 +617,19 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
             sess.run(accumulated_gradients_zero_op)
             num_accumulation_steps = 0
             loss_this_step = 0.0
-            
+
+            # =============================
+            # SD PDF to match with
+            # =============================
+            if args.match_with_sd == 1: # match with mean PDF over SD subjects
+                sd_pdf_this_step = np.mean(pdfs_sd, axis = 0)
+            elif args.match_with_sd == 2: # select a different SD subject for each TTA iteration
+                sd_pdf_this_step = pdfs_sd[np.random.randint(pdfs_sd.shape[0]), :, :]
+            elif args.match_with_sd == 3: # Match the target image's PDF to the closest SD PDF
+                sd_pdf_this_step = pdfs_sd_close[0, :, :]
+            elif args.match_with_sd == 4: # Match the target image's PDF to one of the 5 closest SD PDFs (randomly chosen in each iteration)
+                sd_pdf_this_step = pdfs_sd_close[np.random.randint(pdfs_sd_close.shape[0]), :, :]
+                            
             b_size = args.b_size
             for b_i in range(0, test_image.shape[0], b_size):
 
@@ -588,8 +637,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                     if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
                         # run the accumulate gradients op 
                         feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, :, :], axis=-1),
-                                   sd_pdf_pl: pdfs_sd_mean, 
-                                   sd_pdf_std_pl: pdfs_sd_std,
+                                   sd_pdf_pl: sd_pdf_this_step, 
+                                   sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
                                    x_pdf_pl: x_values, 
                                    alpha_pl: alpha}
                         sess.run(accumulate_gradients_op, feed_dict=feed_dict)
@@ -599,8 +648,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                 elif args.batch_randomized == 1:      
                         # run the accumulate gradients op 
                         feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
-                                   sd_pdf_pl: pdfs_sd_mean, 
-                                   sd_pdf_std_pl: pdfs_sd_std,
+                                   sd_pdf_pl: sd_pdf_this_step, 
+                                   sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
                                    x_pdf_pl: x_values, 
                                    alpha_pl: alpha}
                         sess.run(accumulate_gradients_op, feed_dict=feed_dict)
@@ -700,8 +749,8 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                                      sess,
                                      pdfs_summary,
                                      display_pdfs_pl,
-                                     pdfs_sd_mean,
-                                     pdfs_sd_std,
+                                     np.mean(pdfs_sd, axis = 0),
+                                     np.std(pdfs_sd, axis = 0),
                                      pdfs_td_this_step,
                                      x_values,
                                      log_dir_tta)
@@ -710,7 +759,7 @@ for sub_num in range(args.test_sub_num, args.test_sub_num + 1):
                 # visualize feature distribution alignment
                 # ===========================
                 b_i = 0
-                sd_cfs_batch_this_step = sess.run(sd_cfs, feed_dict={sd_pdf_pl: pdfs_sd_mean})
+                sd_cfs_batch_this_step = sess.run(sd_cfs, feed_dict={sd_pdf_pl: np.mean(pdfs_sd, axis = 0)})
                 td_cfs_batch_this_step = sess.run(td_cfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
                                                                      x_pdf_pl: x_values,
                                                                      alpha_pl: alpha})
