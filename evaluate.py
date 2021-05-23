@@ -26,13 +26,15 @@ import argparse
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--test_dataset', default = "PROMISE") # USZ / PROMISE
-parser.add_argument('--tta_vars', default = "bn") # bn / norm
+parser.add_argument('--tta_vars', default = "norm") # bn / norm
 parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+parser.add_argument('--TTA_or_SFDA', default = "SFDA") # TTA / SFDA
+parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
 args = parser.parse_args()
 
 # ==================================================================
@@ -57,6 +59,14 @@ log_dir_tta = log_dir_sd + exp_str
 target_resolution = exp_config.target_resolution
 image_size = exp_config.image_size
 nlabels = exp_config.nlabels
+
+# ==================================================================
+# ==================================================================
+if args.TTA_or_SFDA == 'SFDA':
+    if args.test_dataset == 'USZ':
+        td_string = 'SFDA_' + args.test_dataset + '/'
+    elif args.test_dataset == 'PROMISE':    
+        td_string = 'SFDA_' + args.test_dataset + '_' + args.PROMISE_SUB_DATASET + '/'
 
 # ==================================================================
 # main function for inference
@@ -151,9 +161,15 @@ def predict_segmentation(subject_name,
         # ================================================================
         if normalize == True:
             logging.info('============================================================')
-            subject_string = args.test_dataset + '_' + subject_name
-            path_to_model = log_dir_tta + subject_string + '/models/'
-            checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+
+            if args.TTA_or_SFDA == 'TTA':
+                subject_string = args.test_dataset + '_' + subject_name + '/'
+                path_to_model = log_dir_tta + subject_string + 'models/'
+                checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+            elif args.TTA_or_SFDA == 'SFDA':
+                path_to_model = log_dir_tta + td_string + 'models/'
+                checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'model.ckpt')
+
             logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
             saver_tta.restore(sess, checkpoint_path)
             logging.info('============================================================')
@@ -385,16 +401,18 @@ def main():
     # ================================   
     # open a text file for writing the mean dice scores for each subject that is evaluated
     # ================================
-    if exp_config.whole_gland_results == True:
-        if exp_config.normalize == True:
-            results_file = open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "w")
-        else:
-            results_file = open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "w")
+    if exp_config.normalize == True:
+        if args.TTA_or_SFDA == 'TTA':
+            results_filename = log_dir_tta + test_dataset_name + '_test'
+        elif args.TTA_or_SFDA == 'SFDA':
+            results_filename = log_dir_tta + td_string + test_dataset_name + '_test'
     else:
-        if exp_config.normalize == True:
-            results_file = open(log_dir_tta + test_dataset_name + '_test.txt', "w")
-        else:
-            results_file = open(log_dir_sd + test_dataset_name + '_test.txt', "w")
+        results_filename = log_dir_sd + test_dataset_name + '_test'
+    
+    if exp_config.whole_gland_results == True:
+        results_filename = results_filename + '_whole_gland'
+    
+    results_file = open(results_filename + '.txt', "w")
     results_file.write("================================== \n") 
     results_file.write("Test results \n") 
     
@@ -493,22 +511,26 @@ def main():
                                                               num_rotations = num_rotations)
 
         # ==================================================================
+        # Name of visualization
+        # ==================================================================
+        if exp_config.normalize == True:
+            if args.TTA_or_SFDA == 'TTA':
+                savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name
+            elif args.TTA_or_SFDA == 'SFDA':
+                savepath = log_dir_tta + td_string + test_dataset_name + '_test_' + subject_name
+        else:
+            savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name
+
+        # ==================================================================
         # If only whole-gland comparisions are desired, merge the labels in both ground truth segmentations as well as the predictions
         # ==================================================================
         if exp_config.whole_gland_results == True:
             predicted_labels_orig_res_and_size[predicted_labels_orig_res_and_size!=0] = 1
             labels_orig[labels_orig!=0] = 1
             nl = 2
-            if exp_config.normalize == True:
-                savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name + '_whole_gland.png'
-            else:
-                savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name + '_whole_gland.png'
+            savepath = savepath + '_whole_gland'
         else:
             nl = nlabels
-            if exp_config.normalize == True:
-                savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name + '.png'
-            else:
-                savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name + '.png'
 
         # ==================================================================
         # compute dice at the original resolution
@@ -540,7 +562,7 @@ def main():
                                                  y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
                                                  gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
                                                  num_rotations = - num_rotations, # rotate for consistent visualization across datasets
-                                                 savepath = savepath,
+                                                 savepath = savepath + '.png',
                                                  nlabels = nl,
                                                  ids=ids_vis)
                                    

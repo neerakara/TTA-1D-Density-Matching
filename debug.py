@@ -68,42 +68,42 @@ for sub_num in range(20):
 # ==================================================================
 # Read NCI
 # ==================================================================
-data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
-                                                 preprocessing_folder = sys_config.preproc_folder_nci,
-                                                 size = image_size,
-                                                 target_resolution = target_resolution,
-                                                 force_overwrite = False,
-                                                 cv_fold_num = 1)
+# data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
+#                                                  preprocessing_folder = sys_config.preproc_folder_nci,
+#                                                  size = image_size,
+#                                                  target_resolution = target_resolution,
+#                                                  force_overwrite = False,
+#                                                  cv_fold_num = 1)
 
-imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
-imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
-orig_data_siz_z_train = data_pros['nz_train'][:]
-orig_data_res_z_train = data_pros['pz_train'][:]
-name_train_subjects = data_pros['patnames_train']
+# imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
+# imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
+# orig_data_siz_z_train = data_pros['nz_train'][:]
+# orig_data_res_z_train = data_pros['pz_train'][:]
+# name_train_subjects = data_pros['patnames_train']
 
-for sub_num in range(orig_data_siz_z_train.shape[0]):
-    logging.info("NCI subject " + str(sub_num) + ": " + str(name_train_subjects[sub_num])[2:-1] + ", res in z: " + str(orig_data_res_z_train[sub_num]) + ", num slices: " + str(orig_data_siz_z_train[sub_num]))
+# for sub_num in range(orig_data_siz_z_train.shape[0]):
+#     logging.info("NCI subject " + str(sub_num) + ": " + str(name_train_subjects[sub_num])[2:-1] + ", res in z: " + str(orig_data_res_z_train[sub_num]) + ", num slices: " + str(orig_data_siz_z_train[sub_num]))
 
 # ==================================================================
 # Plotting SD KDEs
 # ==================================================================
-path_to_model = sys_config.project_root + 'log_dir/' + exp_config.expname_i2l + 'models/'
-b_size = 2
-alpha = 100.0
-res = 0.1
-x_min = -3.0
-x_max = 3.0
-pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
-x_values = np.arange(x_min, x_max + res, res)
-sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_mean_and_variance.npy'
+# path_to_model = sys_config.project_root + 'log_dir/' + exp_config.expname_i2l + 'models/'
+# b_size = 2
+# alpha = 100.0
+# res = 0.1
+# x_min = -3.0
+# x_max = 3.0
+# pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
+# x_values = np.arange(x_min, x_max + res, res)
+# sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_mean_and_variance.npy'
 
-sd_kdes = np.load(sd_pdfs_filename)
-print(sd_kdes.shape)
+# sd_kdes = np.load(sd_pdfs_filename)
+# print(sd_kdes.shape)
     
-for delta in [0, 32, 96, 224, 480, 608, 672]:                
-    for c in range(5):
-        plt.figure(figsize=[2.5,2.5])
-        for s in range(sd_kdes.shape[0]):
-            plt.plot(np.arange(x_min, x_max + res, res), sd_kdes[s, c + delta, :])
-        plt.savefig(path_to_model + 'sd_pdfs_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
-        plt.close()
+# for delta in [0, 32, 96, 224, 480, 608, 672]:                
+#     for c in range(5):
+#         plt.figure(figsize=[2.5,2.5])
+#         for s in range(sd_kdes.shape[0]):
+#             plt.plot(np.arange(x_min, x_max + res, res), sd_kdes[s, c + delta, :])
+#         plt.savefig(path_to_model + 'sd_pdfs_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
+#         plt.close()

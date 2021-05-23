@@ -16,7 +16,9 @@ parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-parser.add_argument('--match_with_sd', type = int, default = 3) # 1 / 2 / 3
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3
+parser.add_argument('--TTA_or_SFDA', default = "SFDA") # TTA / SFDA
+parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
 args = parser.parse_args()
 
 # ==================================================================
@@ -35,6 +37,13 @@ exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
 exp_str = exp_str + '/' 
 log_dir_tta = log_dir_sd + exp_str
+
+if args.TTA_or_SFDA == 'SFDA':
+    if args.test_dataset == 'USZ':
+        td_string = 'SFDA_' + args.test_dataset + '/'
+    elif args.test_dataset == 'PROMISE':    
+        td_string = 'SFDA_' + args.test_dataset + '_' + args.PROMISE_SUB_DATASET + '/'
+    log_dir_tta = log_dir_tta + td_string
 
 test_dataset_name = args.test_dataset
 
