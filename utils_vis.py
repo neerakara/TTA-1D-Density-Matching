@@ -262,16 +262,13 @@ def stitch_images(x, xn, y, y_gt):
         
     nx, ny = x.shape[1:]
     stitched_image = np.zeros((4*nx, 5*ny), dtype = np.float32)
+    vis_ids = np.linspace(0, x.shape[0], 9, dtype=np.uint8)[2:7]
 
     for i in range(5):
-        if 4*i+4 < x.shape[0]:
-            idx = 4*i+4
-        else:
-            idx = x.shape[0] - 1
-        sx = 0; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = x[idx, :, :]
-        sx = 1; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = xn[idx, :, :]
-        sx = 2; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y[idx, :, :]
-        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[idx, :, :]
+        sx = 0; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = x[vis_ids[i], :, :]
+        sx = 1; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = xn[vis_ids[i], :, :]
+        sx = 2; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y[vis_ids[i], :, :]
+        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[vis_ids[i], :, :]
     
     return stitched_image
 

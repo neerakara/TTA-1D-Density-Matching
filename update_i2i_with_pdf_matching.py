@@ -35,8 +35,8 @@ from experiments import i2i as exp_config
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # read arguments
-parser.add_argument('--train_dataset', default = "NCI") # NCI
-parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ
+parser.add_argument('--train_dataset', default = "HCPT1") # NCI
+parser.add_argument('--test_dataset', default = "STANFORD") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
@@ -47,20 +47,43 @@ parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 parser.add_argument('--alpha', type = float, default = 100.0) # 100.0 / 1000.0
-parser.add_argument('--TTA_or_SFDA', default = "SFDA") # TTA / SFDA
-parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
+parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
+parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK (doesn't matter for TTA)
 args = parser.parse_args()
-
-target_resolution = exp_config.target_resolution
-image_size = exp_config.image_size
-nlabels = exp_config.nlabels
 
 log_dir = os.path.join(sys_config.project_root, 'log_dir/' + exp_config.expname_i2l)
 logging.info('SD training directory: %s' %log_dir)
 tensorboard_dir = os.path.join(sys_config.tensorboard_root, exp_config.expname_i2l)
 
 # ================================================================
-# load training data
+# set dataset dependent hyperparameters
+# ================================================================
+image_size = exp_config.image_size
+if args.train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
+    nlabels = exp_config.nlabels_brain
+    target_resolution = (0.7, 0.7)
+    downsampling_factor_x = 4
+    downsampling_factor_y = 1
+    downsampling_factor_z = 1
+    image_depth = 256
+    max_steps_i2i = 201 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+    model_saving_freq = 25
+    vis_freq = 5 
+
+elif args.train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
+    nlabels = exp_config.nlabels_prostate
+    target_resolution = (0.625, 0.625)
+    image_depth = 32
+    downsampling_factor_x = 1
+    downsampling_factor_y = 1
+    downsampling_factor_z = 1
+    max_steps_i2i = 501 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+    model_saving_freq = 250
+    vis_freq = 50
+
+# ================================================================
+# load training data (NCI)
 # ================================================================
 if args.train_dataset == 'NCI':
     logging.info('Reading NCI images...')    
@@ -73,13 +96,30 @@ if args.train_dataset == 'NCI':
                                                         cv_fold_num = 1)
     
     imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
-    imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
-
     orig_data_siz_z_train = data_pros['nz_train'][:]
     num_train_subjects = orig_data_siz_z_train.shape[0] 
 
 # ================================================================
-# load PROMISE
+# load training data (HCP T1)
+# ================================================================
+elif args.train_dataset is 'HCPT1':
+    logging.info('Reading HCPT1 images...')    
+    logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+    data_brain_train = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                            preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                            idx_start = 0,
+                                                            idx_end = 20,             
+                                                            protocol = 'T1',
+                                                            size = image_size,
+                                                            depth = 256,
+                                                            target_resolution = target_resolution)
+    
+    imtr, gttr = [ data_brain_train['images'], data_brain_train['labels'] ]
+    orig_data_siz_z_train = data_brain_train['nz'][:]
+    num_train_subjects = orig_data_siz_z_train.shape[0] 
+
+# ================================================================
+# load test data (PROMISE)
 # ================================================================
 if args.test_dataset == 'PROMISE':
     data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
@@ -104,7 +144,7 @@ if args.test_dataset == 'PROMISE':
     ids = np.arange(num_test_subjects)
 
 # ================================================================
-# load USZ
+# load test data (USZ)
 # ================================================================
 elif args.test_dataset == 'USZ':
 
@@ -126,6 +166,107 @@ elif args.test_dataset == 'USZ':
     num_test_subjects = orig_data_siz_z.shape[0] 
 
 # ================================================================
+# load test data (HCP T2)
+# ================================================================
+elif args.test_dataset == 'HCPT2':
+    logging.info('Reading HCPT2 images...')    
+    logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+    
+    image_depth = exp_config.image_depth_hcp
+    idx_start = 50
+    idx_end = 70
+    
+    data_brain = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                      preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                      idx_start = idx_start,
+                                                      idx_end = idx_end,           
+                                                      protocol = 'T2',
+                                                      size = image_size,
+                                                      depth = image_depth,
+                                                      target_resolution = target_resolution)
+
+    imts = data_brain['images']
+    gtts = data_brain['labels']
+    name_test_subjects = data_brain['patnames']
+    num_test_subjects = imts.shape[0] // image_depth
+    ids = np.arange(idx_start, idx_end)
+
+    orig_data_res_x = data_brain['px'][:]
+    orig_data_res_y = data_brain['py'][:]
+    orig_data_res_z = data_brain['pz'][:]
+    orig_data_siz_x = data_brain['nx'][:]
+    orig_data_siz_y = data_brain['ny'][:]
+    orig_data_siz_z = data_brain['nz'][:]
+    
+# ================================================================
+# load test data (ABIDE CALTECH T1)
+# ================================================================
+elif args.test_dataset == 'CALTECH':
+    logging.info('Reading CALTECH images...')    
+    logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')
+    
+    image_depth = exp_config.image_depth_caltech
+    idx_start = 16
+    idx_end = 36         
+    
+    data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
+                                                        preprocessing_folder = sys_config.preproc_folder_abide,
+                                                        site_name = 'CALTECH',
+                                                        idx_start = idx_start,
+                                                        idx_end = idx_end,             
+                                                        protocol = 'T1',
+                                                        size = image_size,
+                                                        depth = image_depth,
+                                                        target_resolution = target_resolution)
+
+    imts = data_brain['images']
+    gtts = data_brain['labels']
+    name_test_subjects = data_brain['patnames']
+    num_test_subjects = imts.shape[0] // image_depth
+    ids = np.arange(idx_start, idx_end)
+
+    orig_data_res_x = data_brain['px'][:]
+    orig_data_res_y = data_brain['py'][:]
+    orig_data_res_z = data_brain['pz'][:]
+    orig_data_siz_x = data_brain['nx'][:]
+    orig_data_siz_y = data_brain['ny'][:]
+    orig_data_siz_z = data_brain['nz'][:]
+
+# ================================================================
+# load test data (ABIDE STANFORD T1)
+# ================================================================
+elif args.test_dataset == 'STANFORD':
+    logging.info('Reading STANFORD images...')    
+    logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'STANFORD/')
+    
+    image_depth = exp_config.image_depth_stanford
+    idx_start = 16
+    idx_end = 36         
+    
+    data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
+                                                        preprocessing_folder = sys_config.preproc_folder_abide,
+                                                        site_name = 'STANFORD',
+                                                        idx_start = idx_start,
+                                                        idx_end = idx_end,             
+                                                        protocol = 'T1',
+                                                        size = image_size,
+                                                        depth = image_depth,
+                                                        target_resolution = target_resolution)
+
+    imts = data_brain['images']
+    gtts = data_brain['labels']
+    name_test_subjects = data_brain['patnames']
+    num_test_subjects = imts.shape[0] // image_depth
+    ids = np.arange(idx_start, idx_end)
+
+    orig_data_res_x = data_brain['px'][:]
+    orig_data_res_y = data_brain['py'][:]
+    orig_data_res_z = data_brain['pz'][:]
+    orig_data_siz_x = data_brain['nx'][:]
+    orig_data_siz_y = data_brain['ny'][:]
+    orig_data_siz_z = data_brain['nz'][:]
+
+# ================================================================
 # Run TTA for the asked subject / SFDA for the requested TD
 # ================================================================
 exp_str = exp_config.tta_string + 'tta_vars_' + args.tta_vars 
@@ -135,8 +276,11 @@ exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
 exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
+exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
 exp_str = exp_str + '/' # _z_subsample
 
+# ================================================================
+# ================================================================
 if args.TTA_or_SFDA == 'TTA':
     sub_num = args.test_sub_num    
     logging.info(str(name_test_subjects[sub_num])[2:-1])
@@ -169,9 +313,10 @@ elif args.TTA_or_SFDA == 'SFDA':
 
     exp_str = exp_str + td_string
 
+# ================================================================
+# ================================================================
 log_dir_tta = log_dir + exp_str
 tensorboard_dir_tta = tensorboard_dir + exp_str
-
 logging.info('Tensorboard directory TTA: %s' %tensorboard_dir_tta)
 
 if not tf.gfile.Exists(log_dir_tta):
@@ -371,7 +516,7 @@ with tf.Graph().as_default():
     # add optimization ops
     # ================================================================   
     # create an instance of the required optimizer
-    optimizer = exp_config.optimizer_handle(learning_rate = exp_config.learning_rate)    
+    optimizer = exp_config.optimizer_handle(learning_rate = args.tta_learning_rate)    
     # initialize variable holding the accumlated gradients and create a zero-initialisation op
     accumulated_gradients = [tf.Variable(tf.zeros_like(var.initialized_value()), trainable=False) for var in tta_vars]
     # accumulated gradients init op
@@ -451,15 +596,15 @@ with tf.Graph().as_default():
     # ================================================================
     # compute the SD PDFs once (extract the whole pdf instead of just the 1st and 2nd moments of the pdf), and pass them as placeholders for computing the loss in each iteration
     # ================================================================
-    b_size = args.b_size
+    b_size_compute_sd_pdfs = 2
     alpha = args.alpha
     res = 0.1
     x_min = -3.0
     x_max = 3.0
-    pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize2' # + str(b_size)
+    pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' # + str(b_size_compute_sd_pdfs)
     x_values = np.arange(x_min, x_max + res, res)
     
-    sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_mean_and_variance.npy'
+    sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
     
     if os.path.isfile(sd_pdfs_filename):            
         pdfs_sd = np.load(sd_pdfs_filename) # [num_subjects, num_channels, num_x_points]
@@ -475,9 +620,9 @@ with tf.Graph().as_default():
             
             num_batches = 0
             
-            for b_i in range(0, sd_image.shape[0], b_size):
-                if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
+            for b_i in range(0, sd_image.shape[0], b_size_compute_sd_pdfs):
+                if b_i + b_size_compute_sd_pdfs < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
+                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_pdfs, ...], axis=-1),
                                                                     x_pdf_pl: x_values,
                                                                     alpha_pl: alpha})
                     if b_i == 0:
@@ -544,10 +689,8 @@ with tf.Graph().as_default():
     # ================================================================
     step = 0
     best_loss = 1000.0
-    if args.TTA_or_SFDA == 'TTA':
-        max_steps_i2i = exp_config.max_steps_i2i
-    elif args.TTA_or_SFDA == 'SFDA':
-        max_steps_i2i = num_test_subjects * exp_config.max_steps_i2i
+    if args.TTA_or_SFDA == 'SFDA':
+        max_steps_i2i = num_test_subjects * max_steps_i2i
 
     while (step < max_steps_i2i):
         
@@ -642,7 +785,7 @@ with tf.Graph().as_default():
         # ===========================
         # Periodically save models
         # ===========================
-        if (step+1) % 250 == 0:
+        if (step+1) % model_saving_freq == 0:
             saver_tta.save(sess, os.path.join(log_dir_tta, 'models/model.ckpt'), global_step=step)
 
         # ===========================
@@ -687,7 +830,7 @@ with tf.Graph().as_default():
         # ===========================   
         # visualize 
         # ===========================
-        if step % 10 == 0:
+        if (step+1) % vis_freq == 0:
 
             utils_vis.write_image_summaries(step,
                                             summary_writer,
