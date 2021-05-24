@@ -35,7 +35,7 @@ from experiments import i2i as exp_config
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # read arguments
-parser.add_argument('--train_dataset', default = "HCPT1") # NCI
+parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--test_dataset', default = "STANFORD") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
@@ -78,7 +78,7 @@ elif args.train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
     downsampling_factor_x = 1
     downsampling_factor_y = 1
     downsampling_factor_z = 1
-    max_steps_i2i = 501 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+    max_steps_i2i = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
     model_saving_freq = 250
     vis_freq = 50
 
@@ -601,7 +601,7 @@ with tf.Graph().as_default():
     res = 0.1
     x_min = -3.0
     x_max = 3.0
-    pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' # + str(b_size_compute_sd_pdfs)
+    pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size_compute_sd_pdfs)
     x_values = np.arange(x_min, x_max + res, res)
     
     sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'

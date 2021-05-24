@@ -25,7 +25,7 @@ import argparse
 
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--test_dataset', default = "PROMISE") # USZ / PROMISE
+parser.add_argument('--test_dataset', default = "STANFORD") # USZ / PROMISE / CALTECH / STANFORD
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
 parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
@@ -33,8 +33,10 @@ parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
-parser.add_argument('--TTA_or_SFDA', default = "SFDA") # TTA / SFDA
+parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
 parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
+parser.add_argument('--which_model', default = "last_iter") # last_iter / best_loss
 args = parser.parse_args()
 
 # ==================================================================
@@ -52,6 +54,7 @@ exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
 exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
+exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
 exp_str = exp_str + '/' 
 
 log_dir_tta = log_dir_sd + exp_str
@@ -165,7 +168,10 @@ def predict_segmentation(subject_name,
             if args.TTA_or_SFDA == 'TTA':
                 subject_string = args.test_dataset + '_' + subject_name + '/'
                 path_to_model = log_dir_tta + subject_string + 'models/'
-                checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+                if args.which_model == 'best_loss':
+                    checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+                elif args.which_model == 'last_iter':
+                    checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'model.ckpt')
             elif args.TTA_or_SFDA == 'SFDA':
                 path_to_model = log_dir_tta + td_string + 'models/'
                 checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'model.ckpt')
@@ -223,7 +229,8 @@ def rescale_and_crop(arr,
                                  order = order_interpolation,
                                  preserve_range = True,
                                  multichannel = False,
-                                 mode = 'constant')
+                                 mode = 'constant',
+                                 anti_aliasing = False)
 
         arr2d_rescaled_cropped = utils.crop_or_pad_slice_to_size(arr2d_rescaled, nx, ny)
 
@@ -331,6 +338,40 @@ def main():
         orig_data_siz_y = data_brain_test['ny'][:]
         orig_data_siz_z = data_brain_test['nz'][:]
 
+    # ================================================================
+    # load test data (ABIDE STANFORD T1)
+    # ================================================================
+    elif args.test_dataset == 'STANFORD':
+        logging.info('Reading STANFORD images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'STANFORD/')
+        
+        image_depth = exp_config.image_depth_stanford
+        idx_start = 16
+        idx_end = 36         
+        
+        data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
+                                                            preprocessing_folder = sys_config.preproc_folder_abide,
+                                                            site_name = 'STANFORD',
+                                                            idx_start = idx_start,
+                                                            idx_end = idx_end,             
+                                                            protocol = 'T1',
+                                                            size = image_size,
+                                                            depth = image_depth,
+                                                            target_resolution = target_resolution)
+
+        imts = data_brain['images']
+        gtts = data_brain['labels']
+        name_test_subjects = data_brain['patnames']
+        num_test_subjects = imts.shape[0] // image_depth
+        ids = np.arange(idx_start, idx_end)
+
+        orig_data_res_x = data_brain['px'][:]
+        orig_data_res_y = data_brain['py'][:]
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_x = data_brain['nx'][:]
+        orig_data_siz_y = data_brain['ny'][:]
+        orig_data_siz_z = data_brain['nz'][:]
+
     elif test_dataset_name == 'NCI':
         data_pros = data_nci.load_and_maybe_process_data(input_folder=sys_config.orig_data_root_nci,
                                                          preprocessing_folder=sys_config.preproc_folder_nci,
@@ -411,6 +452,10 @@ def main():
     
     if exp_config.whole_gland_results == True:
         results_filename = results_filename + '_whole_gland'
+
+    # last iter or best loss
+    if args.which_model == 'last_iter':
+        results_filename = results_filename + '_' + args.which_model
     
     results_file = open(results_filename + '.txt', "w")
     results_file.write("================================== \n") 
@@ -478,6 +523,14 @@ def main():
                                                                                depth = image_depth)
             num_rotations = 0
 
+        elif test_dataset_name == 'STANFORD':
+            # image will be normalized to [0,1]
+            image_orig, labels_orig = data_abide.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_abide,
+                                                                               site_name = 'STANFORD',
+                                                                               idx = ids[sub_num],
+                                                                               depth = image_depth)
+            num_rotations = 0
+
         elif test_dataset_name == 'NCI':
             # image will be normalized to [0,1]
             image_orig, labels_orig = data_nci.load_without_size_preprocessing(sys_config.orig_data_root_nci,
@@ -508,7 +561,7 @@ def main():
                                                               orig_data_siz_x[sub_num],
                                                               orig_data_siz_y[sub_num],
                                                               order_interpolation = 0,
-                                                              num_rotations = num_rotations)
+                                                              num_rotations = num_rotations).astype(np.uint8)
 
         # ==================================================================
         # Name of visualization
@@ -532,11 +585,17 @@ def main():
         else:
             nl = nlabels
 
+        # last iter or best loss
+        if args.which_model == 'last_iter':
+            savepath = savepath + '_' + args.which_model
+
         # ==================================================================
         # compute dice at the original resolution
         # ==================================================================    
         logging.info(labels_orig.shape)
         logging.info(predicted_labels_orig_res_and_size.shape)
+        logging.info(labels_orig.dtype)
+        logging.info(predicted_labels_orig_res_and_size.dtype)
         dice_per_label_this_subject = met.f1_score(labels_orig.flatten(),
                                                    predicted_labels_orig_res_and_size.flatten(),
                                                    average=None)
