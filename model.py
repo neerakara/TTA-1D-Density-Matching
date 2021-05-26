@@ -8,6 +8,7 @@ import matplotlib.cm
 def predict_i2l(images,
                 exp_config,
                 training_pl,
+                nlabels,
                 scope_reuse = False):
     '''
     Returns the prediction for an image given a network from the model zoo
@@ -17,7 +18,7 @@ def predict_i2l(images,
     '''
 
     logits = exp_config.model_handle_i2l(images,
-                                         nlabels = exp_config.nlabels,
+                                         nlabels = nlabels,
                                          training_pl = training_pl,
                                          scope_reuse = scope_reuse)
     

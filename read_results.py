@@ -9,7 +9,7 @@ import argparse
 
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--test_dataset', default = "CALTECH") # USZ / PROMISE
+parser.add_argument('--test_dataset', default = "USZ") # USZ / PROMISE / CALTECH / STANFORD
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
 parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
@@ -56,8 +56,12 @@ test_dataset_name = args.test_dataset
 
 if test_dataset_name == 'PROMISE' or test_dataset_name == 'USZ':
     if exp_config.normalize == True:
-        with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
-            lines = f.readlines()
+        if args.which_model == 'last_iter':
+            with open(log_dir_tta + test_dataset_name + '_test_whole_gland_last_iter.txt', "r") as f:
+                lines = f.readlines()
+        else:
+            with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+                lines = f.readlines()
     else:
         with open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "r") as f:
             lines = f.readlines()
@@ -75,38 +79,35 @@ elif test_dataset_name == 'CALTECH' or test_dataset_name == 'STANFORD':
 pat_id = []
 dice = []
 
-for line in lines:
-    print(line)
+for count in range(2, 22):
+    line = lines[count]
 
-# for count in range(2, 22):
-#     line = lines[count]
+    if test_dataset_name == 'PROMISE':
+        pat_id.append(int(line[4:6]))
+        dice.append(float(line[46:46+line[46:].find(',')]))
+    elif test_dataset_name == 'USZ':
+        pat_id.append(int(line[6:line.find(':')]))
+        line = line[line.find(':') + 39 : ]
+        dice.append(float(line[:line.find(',')]))
 
-#     if test_dataset_name == 'PROMISE':
-#         pat_id.append(int(line[4:6]))
-#         dice.append(float(line[46:46+line[46:].find(',')]))
-#     elif test_dataset_name == 'USZ':
-#         pat_id.append(int(line[6:line.find(':')]))
-#         line = line[line.find(':') + 39 : ]
-#         dice.append(float(line[:line.find(',')]))
+pat_id = np.array(pat_id)
+dice = np.array(dice)
+results = np.stack((pat_id, dice))
+sorted_results = np.stack((np.sort(results[0,:]), results[1, np.argsort(results[0,:])]))
 
-# pat_id = np.array(pat_id)
-# dice = np.array(dice)
-# results = np.stack((pat_id, dice))
-# sorted_results = np.stack((np.sort(results[0,:]), results[1, np.argsort(results[0,:])]))
+# ==================================================================
+# ==================================================================
+print('========== sorted results ==========')
+if test_dataset_name == 'PROMISE':
+    for c in range(1, sorted_results.shape[1]):
+        print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
+        if c == 9:
+            print(str(sorted_results[0,0]) + ',' + str(sorted_results[1,0]))
 
-# # ==================================================================
-# # ==================================================================
-# print('========== sorted results ==========')
-# if test_dataset_name == 'PROMISE':
-#     for c in range(1, sorted_results.shape[1]):
-#         print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
-#         if c == 9:
-#             print(str(sorted_results[0,0]) + ',' + str(sorted_results[1,0]))
+elif test_dataset_name == 'USZ':
+    for c in range(0, sorted_results.shape[1]):
+        print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
 
-# elif test_dataset_name == 'USZ':
-#     for c in range(0, sorted_results.shape[1]):
-#         print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
-
-# print('====================================')
-# print(lines[31])
-# print('====================================')
+print('====================================')
+print(lines[31])
+print('====================================')

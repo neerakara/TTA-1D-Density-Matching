@@ -4,10 +4,11 @@ import tensorflow as tf
 # ======================================================================
 # train settings
 # ======================================================================
-train_dataset = 'NCI' # 'NCI' # CALTECH / HCPT2 / HCPT1
+train_dataset = 'HCPT1' # 'NCI' # CALTECH / HCPT2 / HCPT1
 run_number = 1
 tr_str = 'tr' + train_dataset
 run_str = '_r' + str(run_number) + '/'
+expname_i2l = tr_str + run_str + 'i2i2l/'
 
 # ====================================================
 # normalizer architecture
@@ -23,7 +24,6 @@ norm_batch_norm = False
 # settings of the i2l mapper 
 # ====================================================
 model_handle_i2l = model_zoo.unet2D_i2l
-expname_i2l = tr_str + run_str + 'i2i2l/'
 
 # ======================================================================
 # test settings

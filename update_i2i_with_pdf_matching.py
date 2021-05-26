@@ -36,25 +36,29 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 
 # read arguments
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
-parser.add_argument('--test_dataset', default = "STANFORD") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
+parser.add_argument('--match_moments', default = "CF") # first / firsttwo / all / all_kl
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
-parser.add_argument('--alpha', type = float, default = 100.0) # 100.0 / 1000.0
-parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
 parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK (doesn't matter for TTA)
 args = parser.parse_args()
 
-log_dir = os.path.join(sys_config.project_root, 'log_dir/' + exp_config.expname_i2l)
+expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+log_dir = os.path.join(sys_config.project_root, 'log_dir/' + expname_i2l)
 logging.info('SD training directory: %s' %log_dir)
-tensorboard_dir = os.path.join(sys_config.tensorboard_root, exp_config.expname_i2l)
+tensorboard_dir = os.path.join(sys_config.tensorboard_root, expname_i2l)
 
 # ================================================================
 # set dataset dependent hyperparameters
@@ -125,7 +129,7 @@ if args.test_dataset == 'PROMISE':
     data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
                                                             preprocessing_folder = sys_config.preproc_folder_promise,
                                                             size = exp_config.image_size,
-                                                            target_resolution = exp_config.target_resolution,
+                                                            target_resolution = target_resolution,
                                                             force_overwrite = False,
                                                             cv_fold_num = 2)
     
@@ -276,7 +280,14 @@ exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
 exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
-exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
+if args.tta_learning_rate != 0.001:
+    exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
+if args.tta_learning_rate != 0:
+    exp_str = exp_str + '_sch' + str(args.tta_learning_sch)
+if args.tta_init_from_scratch == 1:
+    exp_str = exp_str + '_reinit_before_tta'
+if args.alpha != 100.0:
+    exp_str = exp_str + '_alpha' + str(args.alpha)
 exp_str = exp_str + '/' # _z_subsample
 
 # ================================================================
@@ -341,7 +352,7 @@ with tf.Graph().as_default():
     # ================================================================
     # build the graph that computes predictions from the inference model
     # ================================================================
-    logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl)
+    logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
     # ================================================================
     # divide the vars into segmentation network and normalization network
     # ================================================================
@@ -458,9 +469,10 @@ with tf.Graph().as_default():
 
     # min L2 distance between complex arrays (match CFs exactly)
     # TODO: Check how L2 distance is defined from complex arrays
-    loss_all_cf_real_op = tf.reduce_mean(tf.math.square(tf.math.real(td_cfs) - tf.math.real(sd_cfs))) # mean over all channels of all layers
-    loss_all_cf_imag_op = tf.reduce_mean(tf.math.square(tf.math.imag(td_cfs) - tf.math.imag(sd_cfs))) # mean over all channels of all layers
-    loss_all_cf_op = loss_all_cf_real_op + loss_all_cf_imag_op
+    # loss_all_cf_real_op = tf.reduce_mean(tf.math.square(tf.math.real(td_cfs) - tf.math.real(sd_cfs))) # mean over all channels of all layers
+    # loss_all_cf_imag_op = tf.reduce_mean(tf.math.square(tf.math.imag(td_cfs) - tf.math.imag(sd_cfs))) # mean over all channels of all layers
+    # loss_all_cf_op = loss_all_cf_real_op + loss_all_cf_imag_op
+    loss_all_cf_op = tf.reduce_mean(tf.math.abs(td_cfs - sd_cfs)) # mean over all channels of all layers and all frequencies
 
     # min L2 distance between magnitudes of complex arrays (match only which frequencies are contained in the CFs, phase can be different.)
     # IDEA: If the modes of the PDF are a bit shifted - this is fine, but if the SD consists of 2 modes, the TD should also have 2 modes corresponding to the same frequecies.
@@ -515,8 +527,9 @@ with tf.Graph().as_default():
     # ================================================================
     # add optimization ops
     # ================================================================   
+    lr_pl = tf.placeholder(tf.float32, shape = [], name = 'tta_learning_rate') # shape [1]
     # create an instance of the required optimizer
-    optimizer = exp_config.optimizer_handle(learning_rate = args.tta_learning_rate)    
+    optimizer = exp_config.optimizer_handle(learning_rate = lr_pl)    
     # initialize variable holding the accumlated gradients and create a zero-initialisation op
     accumulated_gradients = [tf.Variable(tf.zeros_like(var.initialized_value()), trainable=False) for var in tta_vars]
     # accumulated gradients init op
@@ -538,6 +551,7 @@ with tf.Graph().as_default():
     # add init ops
     # ================================================================
     init_ops = tf.global_variables_initializer()
+    init_tta_ops = tf.initialize_variables(tta_vars) # set TTA vars to random values
             
     # ================================================================
     # create session
@@ -588,7 +602,7 @@ with tf.Graph().as_default():
     # Restore the segmentation network parameters
     # ================================================================
     logging.info('============================================================')   
-    path_to_model = sys_config.project_root + 'log_dir/' + exp_config.expname_i2l + 'models/'
+    path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'models/'
     checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_dice.ckpt')
     logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
     saver_i2l.restore(sess, checkpoint_path)
@@ -684,9 +698,15 @@ with tf.Graph().as_default():
             logging.info('SD subject ' + str(sd_closest_sub) + ' is closest to this TD subject.')
             pdfs_sd_close = pdfs_sd[np.argsort(kl_td_sd_subjects)[0:6], :, :] # select 5 close subjects
     
-    # ================================================================
+    # ===================================
+    # Set TTA vars to random values at the start of TTA, if requested
+    # ===================================
+    if args.tta_init_from_scratch == 1:
+        sess.run(init_tta_ops)
+
+    # ===================================
     # TTA / SFDA iterations
-    # ================================================================
+    # ===================================
     step = 0
     best_loss = 1000.0
     if args.TTA_or_SFDA == 'SFDA':
@@ -696,10 +716,21 @@ with tf.Graph().as_default():
         
         logging.info("TTA / SFDA step: " + str(step+1))
         
+        # =============================
         # run accumulated_gradients_zero_op (no need to provide values for any placeholders)
+        # =============================
         sess.run(accumulated_gradients_zero_op)
         num_accumulation_steps = 0
         loss_this_step = 0.0
+
+        # =============================
+        # Learning rate schedule
+        # =============================
+        if args.tta_learning_sch == 1:
+            if step < max_steps_i2i // 2:
+                tta_learning_rate = args.tta_learning_rate
+            else:
+                tta_learning_rate = args.tta_learning_rate / 10.0
 
         # =============================
         # SD PDF to match with
@@ -743,7 +774,8 @@ with tf.Graph().as_default():
                                 sd_pdf_pl: sd_pdf_this_step, 
                                 sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
                                 x_pdf_pl: x_values, 
-                                alpha_pl: alpha}
+                                alpha_pl: alpha,
+                                lr_pl: tta_learning_rate}
                     sess.run(accumulate_gradients_op, feed_dict=feed_dict)
                     loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
                     num_accumulation_steps = num_accumulation_steps + 1
@@ -754,7 +786,8 @@ with tf.Graph().as_default():
                                 sd_pdf_pl: sd_pdf_this_step, 
                                 sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
                                 x_pdf_pl: x_values, 
-                                alpha_pl: alpha}
+                                alpha_pl: alpha,
+                                lr_pl: tta_learning_rate}
                     sess.run(accumulate_gradients_op, feed_dict=feed_dict)
                     loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
                     num_accumulation_steps = num_accumulation_steps + 1

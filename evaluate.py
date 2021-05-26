@@ -25,15 +25,20 @@ import argparse
 
 # read arguments
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--test_dataset', default = "STANFORD") # USZ / PROMISE / CALTECH / STANFORD
+parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
+parser.add_argument('--test_dataset', default = "CALTECH") # USZ / PROMISE / CALTECH / STANFORD
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
+parser.add_argument('--match_moments', default = "CF") # first / firsttwo / all / all_kl
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
-parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
 parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
 parser.add_argument('--which_model', default = "last_iter") # last_iter / best_loss
@@ -44,8 +49,8 @@ args = parser.parse_args()
 # ==================================================================
 from experiments import i2i as exp_config
 log_root = sys_config.project_root + 'log_dir/'
-
-log_dir_sd = log_root + exp_config.expname_i2l
+expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+log_dir_sd = log_root + expname_i2l
 
 exp_str = exp_config.tta_string + 'tta_vars_' + args.tta_vars 
 exp_str = exp_str + '/moments_' + args.match_moments
@@ -54,14 +59,31 @@ exp_str = exp_str + '_rand' + str(args.batch_randomized)
 exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
 exp_str = exp_str + '_rand' + str(args.features_randomized)
 exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
-exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
+if args.tta_learning_rate != 0.001:
+    exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
+if args.tta_learning_rate != 0:
+    exp_str = exp_str + '_sch' + str(args.tta_learning_sch)
+if args.tta_init_from_scratch == 1:
+    exp_str = exp_str + '_reinit_before_tta'
+if args.alpha != 100.0:
+    exp_str = exp_str + '_alpha' + str(args.alpha)
 exp_str = exp_str + '/' 
 
 log_dir_tta = log_dir_sd + exp_str
 
-target_resolution = exp_config.target_resolution
+# ==================================================================
+# Set dataset dependent parameters
+# ==================================================================
 image_size = exp_config.image_size
-nlabels = exp_config.nlabels
+if args.train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
+    nlabels = exp_config.nlabels_brain
+    target_resolution = (0.7, 0.7)
+    whole_gland_results = False
+
+elif args.train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
+    nlabels = exp_config.nlabels_prostate
+    target_resolution = (0.625, 0.625)
+    whole_gland_results = True
 
 # ==================================================================
 # ==================================================================
@@ -103,7 +125,8 @@ def predict_segmentation(subject_name,
         # ================================================================
         logits, softmax, preds = model.predict_i2l(images_normalized,
                                                    exp_config,
-                                                   training_pl = tf.constant(False, dtype=tf.bool))
+                                                   training_pl = tf.constant(False, dtype=tf.bool),
+                                                   nlabels = nlabels)
                         
         # ================================================================
         # divide the vars into segmentation network and normalization network
@@ -421,8 +444,8 @@ def main():
     elif test_dataset_name == 'PROMISE':
         data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
                                                              preprocessing_folder = sys_config.preproc_folder_promise,
-                                                             size = exp_config.image_size,
-                                                             target_resolution = exp_config.target_resolution,
+                                                             size = image_size,
+                                                             target_resolution = target_resolution,
                                                              force_overwrite = False,
                                                              cv_fold_num = 2)
         
@@ -450,7 +473,7 @@ def main():
     else:
         results_filename = log_dir_sd + test_dataset_name + '_test'
     
-    if exp_config.whole_gland_results == True:
+    if whole_gland_results == True:
         results_filename = results_filename + '_whole_gland'
 
     # last iter or best loss
@@ -577,7 +600,7 @@ def main():
         # ==================================================================
         # If only whole-gland comparisions are desired, merge the labels in both ground truth segmentations as well as the predictions
         # ==================================================================
-        if exp_config.whole_gland_results == True:
+        if whole_gland_results == True:
             predicted_labels_orig_res_and_size[predicted_labels_orig_res_and_size!=0] = 1
             labels_orig[labels_orig!=0] = 1
             nl = 2
