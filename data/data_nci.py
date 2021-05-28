@@ -5,7 +5,7 @@ import gc
 import h5py
 from skimage import transform
 import utils
-import config.system as sys_config
+import config.system_paths as sys_config
 import pydicom as dicom
 import nrrd
 import subprocess

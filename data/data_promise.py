@@ -8,7 +8,7 @@ import SimpleITK as sitk
 import h5py
 from skimage import transform
 import utils
-import config.system as sys_config
+import config.system_paths as sys_config
 import subprocess
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 

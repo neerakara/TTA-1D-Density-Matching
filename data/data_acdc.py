@@ -8,7 +8,7 @@ import nibabel as nib
 import gc
 import h5py
 from skimage import transform
-import config.system as sys_config
+import config.system_paths as sys_config
 import utils
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')

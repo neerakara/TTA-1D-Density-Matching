@@ -6,7 +6,7 @@ import h5py
 import glob
 import utils
 from skimage.transform import rescale
-import config.system as sys_config
+import config.system_paths as sys_config
 from shutil import copyfile
 import subprocess
 

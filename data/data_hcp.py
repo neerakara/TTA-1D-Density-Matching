@@ -8,7 +8,7 @@ import glob
 import zipfile, re
 import utils
 from skimage.transform import rescale
-import config.system as sys_config
+import config.system_paths as sys_config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import logging
 import utils
-import config.system as sys_config
+import config.system_paths as sys_config
 from skimage.transform import rescale
 import gc
 import h5py

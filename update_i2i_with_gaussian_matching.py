@@ -29,7 +29,7 @@ parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
 parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 # TTA options
-parser.add_argument('--tta_string', default = "tta_pdf_matching/") # bn / norm
+parser.add_argument('--tta_string', default = "tta_gaussian_matching/") # bn / norm
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--tta_vars', default = "norm") # bn / norm
 parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all / all_kl

@@ -6,7 +6,7 @@ import logging
 import gc
 import h5py
 from skimage import transform
-import config.system as sys_config
+import config.system_paths as sys_config
 import utils
 import pydicom as dicom
 import subprocess

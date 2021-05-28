@@ -8,6 +8,14 @@ from scipy.ndimage import morphology
 import scipy.ndimage.interpolation
 from skimage import transform
 
+import logging
+import config.system_paths as sys_config
+import data.data_hcp as data_hcp
+import data.data_abide as data_abide
+import data.data_nci as data_nci
+import data.data_promise as data_promise
+import data.data_pirad_erc as data_pirad_erc
+
 # ===================================================
 # ===================================================
 def makefolder(folder):
@@ -566,3 +574,195 @@ def compute_surface_distance(y1,
         hausdorff_distance_list.append(hausdorff_distance)
         
     return np.array(hausdorff_distance_list)
+
+
+# ==================================================================   
+# TRAINING DATA LOADER
+# ==================================================================   
+def load_training_data(train_dataset,
+                       image_size,
+                       target_resolution,):
+
+    # ================================================================
+    # NCI
+    # ================================================================
+    if train_dataset == 'NCI':
+    
+        logging.info('Reading NCI images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
+    
+        data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
+                                                         preprocessing_folder = sys_config.preproc_folder_nci,
+                                                         size = image_size,
+                                                         target_resolution = target_resolution,
+                                                         force_overwrite = False,
+                                                         cv_fold_num = 1)
+        
+        imtr = data_pros['images_train']
+        gttr = data_pros['masks_train']
+        orig_data_siz_z_train = data_pros['nz_train'][:]
+        num_train_subjects = orig_data_siz_z_train.shape[0] 
+
+    # ================================================================
+    # HCP T1
+    # ================================================================
+    elif train_dataset == 'HCPT1':
+
+        logging.info('Reading HCPT1 images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+        
+        data_brain_train = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                                preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                                idx_start = 0,
+                                                                idx_end = 20,             
+                                                                protocol = 'T1',
+                                                                size = image_size,
+                                                                depth = 256,
+                                                                target_resolution = target_resolution)
+        
+        imtr = data_brain_train['images']
+        gttr = data_brain_train['labels']
+        orig_data_siz_z_train = data_brain_train['nz'][:]
+        num_train_subjects = orig_data_siz_z_train.shape[0] 
+
+    return (imtr,
+            gttr,
+            orig_data_siz_z_train,
+            num_train_subjects)
+
+# ==================================================================   
+# TEST DATA LOADER
+# ==================================================================   
+def load_testing_data(test_dataset,
+                      image_size,
+                      target_resolution,
+                      image_depth):
+
+    # ================================================================
+    # PROMISE
+    # ================================================================
+    if test_dataset == 'PROMISE':
+        data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
+                                                            preprocessing_folder = sys_config.preproc_folder_promise,
+                                                            size = image_size,
+                                                            target_resolution = target_resolution,
+                                                            force_overwrite = False,
+                                                            cv_fold_num = 2)
+        
+        imts = data_pros['images_test']
+        gtts = data_pros['masks_test']
+        orig_data_res_z = data_pros['pz_test'][:]
+        orig_data_siz_z = data_pros['nz_test'][:]
+        name_test_subjects = data_pros['patnames_test']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # USZ
+    # ================================================================
+    elif test_dataset == 'USZ':
+
+        image_depth = 32
+        z_resolution = 2.5
+
+        data_pros = data_pirad_erc.load_data(input_folder = sys_config.orig_data_root_pirad_erc,
+                                            preproc_folder = sys_config.preproc_folder_pirad_erc,
+                                            idx_start = 0,
+                                            idx_end = 20,
+                                            size = image_size,
+                                            target_resolution = target_resolution,
+                                            labeller = 'ek')
+        
+        imts = data_pros['images']
+        gtts = data_pros['labels']
+        orig_data_res_z = data_pros['pz'][:]
+        orig_data_siz_z = data_pros['nz'][:]
+        name_test_subjects = data_pros['patnames']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # HCP T2
+    # ================================================================
+    elif test_dataset == 'HCPT2':
+
+        logging.info('Reading HCPT2 images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+
+        idx_start = 50
+        idx_end = 70
+        
+        data_brain = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                        preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                        idx_start = idx_start,
+                                                        idx_end = idx_end,           
+                                                        protocol = 'T2',
+                                                        size = image_size,
+                                                        depth = image_depth,
+                                                        target_resolution = target_resolution)
+
+        imts = data_brain['images']
+        gtts = data_brain['labels']
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_z = data_brain['nz'][:]
+        name_test_subjects = data_brain['patnames']
+        num_test_subjects = imts.shape[0] // image_depth       
+        
+    # ================================================================
+    # ABIDE CALTECH T1
+    # ================================================================
+    elif test_dataset == 'CALTECH':
+        logging.info('Reading CALTECH images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')
+
+        idx_start = 16
+        idx_end = 36         
+        
+        data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
+                                                            preprocessing_folder = sys_config.preproc_folder_abide,
+                                                            site_name = 'CALTECH',
+                                                            idx_start = idx_start,
+                                                            idx_end = idx_end,             
+                                                            protocol = 'T1',
+                                                            size = image_size,
+                                                            depth = image_depth,
+                                                            target_resolution = target_resolution)
+
+        imts = data_brain['images']
+        gtts = data_brain['labels']
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_z = data_brain['nz'][:]
+        name_test_subjects = data_brain['patnames']
+        num_test_subjects = imts.shape[0] // image_depth
+
+    # ================================================================
+    # ABIDE STANFORD T1
+    # ================================================================
+    elif test_dataset == 'STANFORD':
+        logging.info('Reading STANFORD images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'STANFORD/')
+
+        idx_start = 16
+        idx_end = 36         
+        
+        data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
+                                                            preprocessing_folder = sys_config.preproc_folder_abide,
+                                                            site_name = 'STANFORD',
+                                                            idx_start = idx_start,
+                                                            idx_end = idx_end,             
+                                                            protocol = 'T1',
+                                                            size = image_size,
+                                                            depth = image_depth,
+                                                            target_resolution = target_resolution)
+
+        imts = data_brain['images']
+        gtts = data_brain['labels']
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_z = data_brain['nz'][:]
+        name_test_subjects = data_brain['patnames']
+        num_test_subjects = imts.shape[0] // image_depth
+
+    return (imts,
+            gtts, 
+            orig_data_res_z,
+            orig_data_siz_z,
+            name_test_subjects,
+            num_test_subjects)
