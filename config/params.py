@@ -137,18 +137,21 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
 # Function to make the name for the experiment run according to TTA parameters
 # ================================================================
 def make_tta_exp_name(args):
-    exp_str = args.tta_string + 'tta_vars_' + args.tta_vars 
-    exp_str = exp_str + '/moments_' + args.match_moments
-    exp_str = exp_str + '_bsize' + str(args.b_size)
-    exp_str = exp_str + '_rand' + str(args.batch_randomized)
-    exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
-    exp_str = exp_str + '_rand' + str(args.features_randomized)
-    exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
-    exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
-    exp_str = exp_str + '_sch' + str(args.tta_learning_sch)
+    exp_str = args.tta_string + 'KDE' + str(args.KDE) # Whether using KDE as an intermediate step or not 
+    if args.KDE == 1:
+        exp_str = exp_str + '/Alpha' + str(args.alpha) # If KDE is used, what's the smoothness parameter?
+    elif args.KDE == 0:
+        exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
+    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2
+    exp_str = exp_str + '/Vars' + args.tta_vars 
+    exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
+    exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
+    exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
+    exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
+    exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
+    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
     if args.tta_init_from_scratch == 1:
-        exp_str = exp_str + '_reinit_before_tta'
-    exp_str = exp_str + '_alpha' + str(args.alpha)
+        exp_str = exp_str + '/Reinit_before_TTA'
     exp_str = exp_str + '/'
 
     return exp_str

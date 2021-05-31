@@ -29,18 +29,26 @@ parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
 parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 # TTA options
-parser.add_argument('--tta_string', default = "tta_gaussian_matching/") # bn / norm
+parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
-parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all / all_kl
+# Whether to compute KDE or not?
+parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
+parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+# Which vars to adapt?
+parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
+# How many moments to match and how?
+parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
+# Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
-parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+# Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+# Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 # SFDA options
 parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
@@ -137,7 +145,11 @@ with tf.Graph().as_default():
     # ================================================================
     # create placeholders
     # ================================================================
-    images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
+    if args.KDE == 1:
+        images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
+    else:
+        # Set first entry of shape to None to compute SD stats over entire volumes
+        images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
     training_pl = tf.constant(False, dtype=tf.bool)
     # ================================================================
     # insert a normalization module in front of the segmentation network
@@ -162,162 +174,191 @@ with tf.Graph().as_default():
         if 'beta' in var_name or 'gamma' in var_name:
             bn_vars.append(v)
 
-    if args.tta_vars == "bn":
+    # ================================================================
+    # Set TTA vars
+    # ================================================================
+    if args.tta_vars == "BN":
         tta_vars = bn_vars
-    elif args.tta_vars == "norm":
+    elif args.tta_vars == "NORM":
         tta_vars = normalization_vars
 
     # ================================================================
-    # Define PDF matching loss
+    # Gaussian matching without computing KDE
     # ================================================================
-    # placeholder for SD PDFs (mean over all SD subjects). These will be extracted after loading the SD trained model.
-    # The shapes have to be hard-coded. Can't get the tile operations to work otherwise..
-    sd_pdf_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs') # shape [num_channels, num_points_along_intensity_range]
-    # placeholder for the standard deviation in the SD KDEs over the SD subjects.
-    sd_pdf_std_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs_std') # shape [num_channels, num_points_along_intensity_range]
-    # placeholder for the points at which the PDFs are evaluated
-    x_pdf_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs') # shape [num_points_along_intensity_range]
-    # placeholder for the smoothing factor in the KDE computation
-    alpha_pl = tf.placeholder(tf.float32, shape = [], name = 'alpha') # shape [1]
+    if args.KDE == 0:
+
+        # placeholders for SD stats. These will be extracted after loading the SD trained model.
+        sd_mu_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_means')
+        sd_var_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_variances')
+
+        # compute the stats of features of the TD image that is fed via the placeholder
+        td_means = tf.zeros([1])
+        td_variances = tf.ones([1])
+        for conv_block in [1,2,3,4,5,6,7]:
+            for conv_sub_block in [1,2]:
+                conv_string = str(conv_block) + '_' + str(conv_sub_block)
+
+                # Whether to compute Gaussians before or after BN layers
+                if args.before_or_after_bn == 'BEFORE':
+                    features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '/Conv2D:0')
+                elif args.before_or_after_bn == 'AFTER':
+                    features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
+
+                # Reshape to bring all those axes together where you want to take moments across
+                features = tf.reshape(features, (-1, features.shape[-1]))
+
+                # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
+                if args.feature_subsampling_factor != 1:
+                    
+                    if args.features_randomized == 0:
+                        features = features[::args.feature_subsampling_factor, :]
+                    
+                    elif args.features_randomized == 1:
+                        # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
+                        # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
+                        random_indices = tf.random.uniform(shape=[features.shape[0].value // args.feature_subsampling_factor],
+                                                           minval=0,
+                                                           maxval=features.shape[0].value - 1,
+                                                           dtype=tf.int32)
+                        features = tf.gather(features, random_indices, axis=0)
+
+                # Compute first two moments of the computed features
+                this_layer_means, this_layer_variances = tf.nn.moments(features, axes = [0])
+
+                td_means = tf.concat([td_means, this_layer_means], 0)
+                td_variances = tf.concat([td_variances, this_layer_variances], 0)
+
+        td_mu = td_means[1:]
+        td_var = td_variances[1:]
+
+        # =================================
+        # Compute the TTA loss - match Gaussians with KL loss
+        # =================================
+        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_var / sd_var_pl) + (sd_var_pl + (sd_mu_pl - td_mu)**2) / td_var)
+        loss_op = loss_gaussian_kl_op # mean over all channels of all layers
+
+        # ================================================================
+        # add losses to tensorboard
+        # ================================================================      
+        tf.summary.scalar('loss/TTA', loss_op)         
+        tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
+        summary_during_tta = tf.summary.merge_all()
 
     # ================================================================
-    # compute the pdfs of features of the TD image that is fed via the placeholder
+    # Gaussian / FULL matching WITH KDEs
     # ================================================================
-    td_pdfs = tf.zeros([1, sd_pdf_pl.shape[1]]) # shape [num_channels, num_points_along_intensity_range]
-    for conv_block in [1,2,3,4,5,6,7]:
-        for conv_sub_block in [1,2]:
-            conv_string = str(conv_block) + '_' + str(conv_sub_block)
-            features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
-            features_td = tf.reshape(features_td, (-1, features_td.shape[-1]))
+    elif args.KDE == 1:
 
-            # for Batch size 2:
-            # 1_1 (131072, 16), 1_2 (131072, 16), 2_1 (32768, 32), 2_2 (32768, 32)
-            # 3_1 (8192, 64), 3_2 (8192, 64), 4_1 (2048, 128), 4_2 (2048, 128)
-            # 5_1 (8192, 64), 5_2 (8192, 64), 6_1 (32768, 32), 6_2 (32768, 32)
-            # 7_1 (131072, 16), 7_2 (131072, 16)
+        # placeholder for SD PDFs (mean over all SD subjects). These will be extracted after loading the SD trained model.
+        # The shapes have to be hard-coded. Can't get the tile operations to work otherwise..
+        sd_pdf_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs') # shape [num_channels, num_points_along_intensity_range]
+        # placeholder for the points at which the PDFs are evaluated
+        x_pdf_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs') # shape [num_points_along_intensity_range]
+        # placeholder for the smoothing factor in the KDE computation
+        alpha_pl = tf.placeholder(tf.float32, shape = [], name = 'alpha') # shape [1]
 
-            # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
-            if args.feature_subsampling_factor != 1:
-                if args.features_randomized == 0:
-                    features_td = features_td[::args.feature_subsampling_factor, :]
-                elif args.features_randomized == 1:
-                    # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
-                    # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
-                    random_indices = tf.random.uniform(shape=[features_td.shape[0].value // args.feature_subsampling_factor],
-                                                        minval=0,
-                                                        maxval=features_td.shape[0].value - 1,
-                                                        dtype=tf.int32)
-                    features_td = tf.gather(features_td, random_indices, axis=0)
+        # ================================================================
+        # compute the pdfs of features of the TD image that is fed via the placeholder
+        # ================================================================
+        td_pdfs = tf.zeros([1, sd_pdf_pl.shape[1]]) # shape [num_channels, num_points_along_intensity_range]
+        for conv_block in [1,2,3,4,5,6,7]:
+            for conv_sub_block in [1,2]:
+                conv_string = str(conv_block) + '_' + str(conv_sub_block)
+                features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
+                features_td = tf.reshape(features_td, (-1, features_td.shape[-1]))
 
-            features_td = tf.tile(tf.expand_dims(features_td, 0), multiples = [x_pdf_pl.shape[0], 1, 1])
-            x_pdf_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x_pdf_pl, -1), -1), multiples = [1, features_td.shape[1], features_td.shape[2]])
+                # for Batch size 2:
+                # 1_1 (131072, 16), 1_2 (131072, 16), 2_1 (32768, 32), 2_2 (32768, 32)
+                # 3_1 (8192, 64), 3_2 (8192, 64), 4_1 (2048, 128), 4_2 (2048, 128)
+                # 5_1 (8192, 64), 5_2 (8192, 64), 6_1 (32768, 32), 6_2 (32768, 32)
+                # 7_1 (131072, 16), 7_2 (131072, 16)
 
-            # the 3 dimensions are : 
-            # 1. the intensity values where the pdf is evaluated,
-            # 2. all the features (the pixels along the 2 spatial dimensions as well as the batch dimension are considered 1D iid samples)
-            # 3. the channels 
-            channel_pdf_this_layer_td = tf.reduce_mean(tf.math.exp(-alpha_pl * tf.math.square(x_pdf_tmp - features_td)), axis=1)
-            channel_pdf_this_layer_td = tf.transpose(channel_pdf_this_layer_td)
-            # at the end, we get 1 pdf (evaluated at the intensity values in x_pdf_pl) per channel
-            
-            td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
-    
-    # ignore the zeroth column that was added at the start of the loop
-    td_pdfs = td_pdfs[1:, :]
+                # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
+                if args.feature_subsampling_factor != 1:
+                    if args.features_randomized == 0:
+                        features_td = features_td[::args.feature_subsampling_factor, :]
+                    elif args.features_randomized == 1:
+                        # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
+                        # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
+                        random_indices = tf.random.uniform(shape=[features_td.shape[0].value // args.feature_subsampling_factor],
+                                                            minval=0,
+                                                            maxval=features_td.shape[0].value - 1,
+                                                            dtype=tf.int32)
+                        features_td = tf.gather(features_td, random_indices, axis=0)
 
-    # ================================================================
-    # compute the TTA loss - add ops for all losses and select based on the argument
-    # ================================================================
+                features_td = tf.tile(tf.expand_dims(features_td, 0), multiples = [x_pdf_pl.shape[0], 1, 1])
+                x_pdf_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x_pdf_pl, -1), -1), multiples = [1, features_td.shape[1], features_td.shape[2]])
 
-    # L2 distance between PDFs
-    loss_all_op = tf.reduce_mean(tf.math.square(td_pdfs - sd_pdf_pl)) # mean over all channels of all layers
+                # the 3 dimensions are : 
+                # 1. the intensity values where the pdf is evaluated,
+                # 2. all the features (the pixels along the 2 spatial dimensions as well as the batch dimension are considered 1D iid samples)
+                # 3. the channels 
+                channel_pdf_this_layer_td = tf.reduce_mean(tf.math.exp(-alpha_pl * tf.math.square(x_pdf_tmp - features_td)), axis=1)
+                channel_pdf_this_layer_td = tf.transpose(channel_pdf_this_layer_td)
+                # at the end, we get 1 pdf (evaluated at the intensity values in x_pdf_pl) per channel
+                
+                td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
+        
+        # Ignore the zeroth column that was added at the start of the loop
+        td_pdfs = td_pdfs[1:, :]
 
-    # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
-    loss_all_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdf_pl, tf.math.log(tf.math.divide(sd_pdf_pl, td_pdfs + 1e-5) + 1e-2)), axis = 1))
+        # ================================================================
+        # compute the TTA loss - add ops for all losses and select based on the argument
+        # ================================================================
 
-    # L2 distance between PDFs, with each coordinate scaled according to the log-variance across the SD subjects at that intensity value.
-    epsilon = 1e-10
-    loss_all_std_w1_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, 0.001 * sd_pdf_std_pl + 1e-3))) # mean over all channels of all layers
-    loss_all_std_w2_op = tf.reduce_mean(tf.math.square(tf.math.divide(td_pdfs - sd_pdf_pl, tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
-    loss_all_std_w3_op = tf.reduce_mean(tf.math.square(tf.math.multiply(td_pdfs - sd_pdf_pl, 0.1 * tf.math.log(sd_pdf_std_pl + epsilon)))) # mean over all channels of all layers
+        # ==================================
+        # Match all moments with KL loss
+        # ==================================
+        # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
+        loss_all_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdf_pl,
+                                                                       tf.math.log(tf.math.divide(sd_pdf_pl,
+                                                                                                  td_pdfs + 1e-5) + 1e-2)), axis = 1))
 
-    # compute means (across spatial locations and the batch axis) from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
-    x_pdf_tiled = tf.tile(tf.expand_dims(x_pdf_pl, 0), multiples = [td_pdfs.shape[0], 1]) # [Nc, Nx]
-    td_pdf_means = tf.reduce_sum(tf.math.multiply(td_pdfs, x_pdf_tiled), axis = 1) # [Nc]
-    sd_pdf_means = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, x_pdf_tiled), axis = 1) # [Nc]
-    loss_one_op = tf.reduce_mean(tf.math.square(td_pdf_means - sd_pdf_means)) # [Nc] (before reduce_mean)
+        # ==================================
+        # Match first two moments with KL loss
+        # ==================================
+        # compute means (across spatial locations and the batch axis) from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
+        x_pdf_tiled = tf.tile(tf.expand_dims(x_pdf_pl, 0), multiples = [td_pdfs.shape[0], 1]) # [Nc, Nx]
+        td_pdf_means = tf.reduce_sum(tf.math.multiply(td_pdfs, x_pdf_tiled), axis = 1) # [Nc]
+        sd_pdf_means = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, x_pdf_tiled), axis = 1) # [Nc]
+        # compute variances (across spatial locations and the batch axis) from the PDFs, using the means computed above
+        # $ \sigma^2 = \sum_{i=xmin}^{xmax} (x - \mu)^2 * p(x) $
+        td_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(td_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
+        td_pdf_variances = tf.reduce_sum(tf.math.multiply(td_pdfs, td_pdf_variances_tmp), axis = 1) # [Nc]
+        sd_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(sd_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
+        sd_pdf_variances = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, sd_pdf_variances_tmp), axis = 1) # [Nc]
+        # D_KL (N(\mu_s, \sigma_s), N(\mu_t, \sigma_t)) = log(\sigma_t**2 / \sigma_s**2) + (\sigma_s**2 + (\mu_s - \mu_t)**2) / (\sigma_t**2)
+        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_pdf_variances / sd_pdf_variances) + (sd_pdf_variances + (sd_pdf_means - td_pdf_means)**2) / td_pdf_variances)
 
-    # compute variances (across spatial locations and the batch axis) from the PDFs, using the means computed above
-    # $ \sigma^2 = \sum_{i=xmin}^{xmax} (x - \mu)^2 * p(x) $
-    td_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(td_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
-    td_pdf_variances = tf.reduce_sum(tf.math.multiply(td_pdfs, td_pdf_variances_tmp), axis = 1) # [Nc]
-    sd_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(sd_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
-    sd_pdf_variances = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, sd_pdf_variances_tmp), axis = 1) # [Nc]
-    loss_onetwo_op = tf.reduce_mean(tf.math.square(td_pdf_means - sd_pdf_means) + tf.math.square(td_pdf_variances - sd_pdf_variances))
-
-    # D_KL (N(\mu_s, \sigma_s), N(\mu_t, \sigma_t)) = log(\sigma_t**2 / \sigma_s**2) + (\sigma_s**2 + (\mu_s - \mu_t)**2) / (\sigma_t**2)
-    loss_onetwokl_op = tf.reduce_mean(tf.math.log(td_pdf_variances / sd_pdf_variances) + (sd_pdf_variances + (sd_pdf_means - td_pdf_means)**2) / td_pdf_variances)
-
-    # compute CFs of the source and target domains
-    td_cfs = tf.spectral.rfft(td_pdfs)
-    sd_cfs = tf.spectral.rfft(sd_pdf_pl)
-
-    # min L2 distance between complex arrays (match CFs exactly)
-    # TODO: Check how L2 distance is defined from complex arrays
-    # loss_all_cf_real_op = tf.reduce_mean(tf.math.square(tf.math.real(td_cfs) - tf.math.real(sd_cfs))) # mean over all channels of all layers
-    # loss_all_cf_imag_op = tf.reduce_mean(tf.math.square(tf.math.imag(td_cfs) - tf.math.imag(sd_cfs))) # mean over all channels of all layers
-    # loss_all_cf_op = loss_all_cf_real_op + loss_all_cf_imag_op
-    loss_all_cf_op = tf.reduce_mean(tf.math.abs(td_cfs - sd_cfs)) # mean over all channels of all layers and all frequencies
-
-    # min L2 distance between magnitudes of complex arrays (match only which frequencies are contained in the CFs, phase can be different.)
-    # IDEA: If the modes of the PDF are a bit shifted - this is fine, but if the SD consists of 2 modes, the TD should also have 2 modes corresponding to the same frequecies.
-    loss_all_cf_mag_only_op = tf.reduce_mean(tf.math.square(tf.math.abs(td_cfs) - tf.math.abs(sd_cfs))) # mean over all channels of all layers
-    
-    # match the PDFs 
-    if args.match_moments == 'all': 
-        loss_op = loss_all_op
-    elif args.match_moments == 'all_kl': 
-        loss_op = loss_all_kl_op
-    # match the PDFs, with less weight for points where the variance over the SD subject is high
-    elif args.match_moments == 'all_std': 
-        loss_op = loss_all_std_w1_op
-    # match the PDFs, with less weight for points where the variance over the SD subject is high
-    elif args.match_moments == 'all_std_log': 
-        loss_op = loss_all_std_w2_op
-    # match the PDFs, with less weight for points where the variance over the SD subject is high
-    elif args.match_moments == 'all_std_log_multiply': 
-        loss_op = loss_all_std_w3_op
-    # match the means of the PDFs
-    elif args.match_moments == 'first': 
-        loss_op = loss_one_op    
-    # match the means and standard deviations of the PDFs
-    elif args.match_moments == 'firsttwo': 
-        loss_op = loss_onetwo_op
-    # match the means and standard deviations of the PDFs, by minimizing the kl div between the 1d gaussians
-    elif args.match_moments == 'firsttwo_kl':
-        loss_op = loss_onetwokl_op
-    # min L2 distance between complex arrays (match CFs exactly)
-    elif args.match_moments == 'CF':
-        loss_op = loss_all_cf_op
-    # min L2 distance between magnitudes of complex arrays (match only which frequencies are contained in the CFs, phase can be different.)
-    elif args.match_moments == 'CF_mag':
-        loss_op = loss_all_cf_mag_only_op
-            
-    # ================================================================
-    # add losses to tensorboard
-    # ================================================================
-    tf.summary.scalar('loss/tta', loss_op)         
-    tf.summary.scalar('loss/1D_all', loss_all_op)
-    tf.summary.scalar('loss/1D_all_kl', loss_all_kl_op)
-    tf.summary.scalar('loss/1D_all_std_w1', loss_all_std_w1_op) # divide by std
-    tf.summary.scalar('loss/1D_all_std', loss_all_std_w2_op) # divide by log-std
-    tf.summary.scalar('loss/1D_all_std_log_multipled', loss_all_std_w3_op) # multiply with log-std
-    tf.summary.scalar('loss/1D_one', loss_one_op)
-    tf.summary.scalar('loss/1D_onetwo', loss_onetwo_op)
-    tf.summary.scalar('loss/1D_onetwokl', loss_onetwokl_op)
-    tf.summary.scalar('loss/1D_all_cf', loss_all_cf_op)
-    tf.summary.scalar('loss/1D_all_cf_mag', loss_all_cf_mag_only_op)
-    summary_during_tta = tf.summary.merge_all()
+        # ==================================
+        # Match Full PDFs by min. L2 distance between the corresponding Characteristic Functions (complex)
+        # ==================================
+        # compute CFs of the source and target domains
+        td_cfs = tf.spectral.rfft(td_pdfs)
+        sd_cfs = tf.spectral.rfft(sd_pdf_pl)
+        loss_all_cf_l2_op = tf.reduce_mean(tf.math.abs(td_cfs - sd_cfs)) # mean over all channels of all layers and all frequencies
+        
+        # ==================================
+        # Select loss to be minimized according to the arguments
+        # ==================================
+        # match full PDFs with KL loss
+        if args.match_moments == 'All_KL': 
+            loss_op = loss_all_kl_op
+        # match Gaussian with KL loss
+        elif args.match_moments == 'Gaussian_KL':
+            loss_op = loss_gaussian_kl_op
+        # min L2 distance between complex arrays (match CFs exactly)
+        elif args.match_moments == 'CF_L2':
+            loss_op = loss_all_cf_l2_op
+                
+        # ================================================================
+        # add losses to tensorboard
+        # ================================================================
+        tf.summary.scalar('loss/TTA', loss_op)         
+        tf.summary.scalar('loss/All_KL', loss_all_kl_op)
+        tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
+        tf.summary.scalar('loss/All_CF_L2', loss_all_cf_l2_op)
+        summary_during_tta = tf.summary.merge_all()
     
     # ================================================================
     # add optimization ops
@@ -341,7 +382,12 @@ with tf.Graph().as_default():
     # reassemble the gradients in the [value, var] format and do define train op
     final_gradients = [(ag, gg[1]) for ag, gg in zip(accumulated_gradients, gradients)]
     train_op = optimizer.apply_gradients(final_gradients)
-                            
+
+    # ================================================================
+    # ================================================================                        
+    loss_ema_pl = tf.placeholder(tf.float32, shape = [], name = 'loss_ema') # shape [1]
+    loss_ema_summary = tf.summary.scalar('loss/TTA_EMA', loss_ema_pl)
+
     # ================================================================
     # add init ops
     # ================================================================
@@ -403,95 +449,113 @@ with tf.Graph().as_default():
     saver_i2l.restore(sess, checkpoint_path)
 
     # ================================================================
-    # compute the SD PDFs once (extract the whole pdf instead of just the 1st and 2nd moments of the pdf), and pass them as placeholders for computing the loss in each iteration
+    # compute the SD PDFs once (extract the whole pdf instead of just the 1st and 2nd moments of the pdf)
+    # These will be passed as placeholders for computing the loss in each iteration
     # ================================================================
-    b_size_compute_sd_pdfs = 2
-    alpha = args.alpha
-    res = 0.1
-    x_min = -3.0
-    x_max = 3.0
-    pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size_compute_sd_pdfs)
-    x_values = np.arange(x_min, x_max + res, res)
-    
-    sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
-    
-    if os.path.isfile(sd_pdfs_filename):            
-        pdfs_sd = np.load(sd_pdfs_filename) # [num_subjects, num_channels, num_x_points]
-    
-    else:
-        pdfs_sd = []
-        num_training_subjects = orig_data_siz_z_train.shape[0]            
-        for train_sub_num in range(num_training_subjects):            
-            
-            logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
-            sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-            logging.info(sd_image.shape)
-            
-            num_batches = 0
-            
-            for b_i in range(0, sd_image.shape[0], b_size_compute_sd_pdfs):
-                if b_i + b_size_compute_sd_pdfs < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_pdfs, ...], axis=-1),
-                                                                    x_pdf_pl: x_values,
-                                                                    alpha_pl: alpha})
-                    if b_i == 0:
-                        pdfs_this_subject = pdfs_this_batch
-
-                    else:
-                        pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
-
-                    num_batches = num_batches + 1
-            
-            pdfs_this_subject = pdfs_this_subject / num_batches
-
-            pdfs_sd.append(pdfs_this_subject)
-
-        pdfs_sd = np.array(pdfs_sd)
-
-        # ================================================================
-        # save
-        # ================================================================
-        np.save(sd_pdfs_filename, pdfs_sd) # [num_subjects, num_channels, num_x_points]
-
-    # ================================================================
-    # Determine which SD subject has the closest KDE to the current target image
-    # (in terms of D_KL)
-    # ================================================================
-    if args.TTA_or_SFDA == 'TTA':
-        if args.match_with_sd == 3 or args.match_with_sd == 4:
-            
-            kl_td_sd_subjects = np.zeros((pdfs_sd.shape[0]))
-            num_runs_for_each_sd_subject = 10
-            
-            for sd_sub_num in range(pdfs_sd.shape[0]):
+    if args.KDE == 1:
+        b_size_compute_sd_pdfs = 2
+        alpha = args.alpha
+        res = 0.1
+        x_min = -3.0
+        x_max = 3.0
+        pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size_compute_sd_pdfs)
+        x_values = np.arange(x_min, x_max + res, res)
+        sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
+        
+        if os.path.isfile(sd_pdfs_filename):            
+            pdfs_sd = np.load(sd_pdfs_filename) # [num_subjects, num_channels, num_x_points]
+        
+        else:
+            pdfs_sd = []
+            num_training_subjects = orig_data_siz_z_train.shape[0]            
+            for train_sub_num in range(num_training_subjects):            
                 
-                kl_td_sd_subject = 0.0
+                logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
+                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+                logging.info(sd_image.shape)
                 
-                for _ in range(num_runs_for_each_sd_subject):
+                num_batches = 0
+                
+                for b_i in range(0, sd_image.shape[0], b_size_compute_sd_pdfs):
+                    if b_i + b_size_compute_sd_pdfs < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
+                        pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_pdfs, ...], axis=-1),
+                                                                        x_pdf_pl: x_values,
+                                                                        alpha_pl: alpha})
+                        if b_i == 0:
+                            pdfs_this_subject = pdfs_this_batch
 
-                    x_batch = test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :]
+                        else:
+                            pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
 
-                    if args.match_moments == 'all_kl':
-                        kl_td_sd_subject = kl_td_sd_subject + sess.run(loss_all_kl_op,
-                                                                        feed_dict={images_pl: np.expand_dims(x_batch, axis=-1),
-                                                                                    sd_pdf_pl: pdfs_sd[sd_sub_num, :, :], 
-                                                                                    x_pdf_pl: x_values, 
-                                                                                    alpha_pl: alpha})
+                        num_batches = num_batches + 1
+                
+                pdfs_this_subject = pdfs_this_subject / num_batches
 
-                    elif args.match_moments == 'firsttwo_kl':
-                        kl_td_sd_subject = kl_td_sd_subject + sess.run(loss_onetwokl_op,
-                                                                        feed_dict={images_pl: np.expand_dims(x_batch, axis=-1),
-                                                                                    sd_pdf_pl: pdfs_sd[sd_sub_num, :, :], 
-                                                                                    x_pdf_pl: x_values, 
-                                                                                    alpha_pl: alpha})
-                                                                                    
-                kl_td_sd_subjects[sd_sub_num] = kl_td_sd_subject / num_runs_for_each_sd_subject
+                pdfs_sd.append(pdfs_this_subject)
 
-            logging.info("D_KL with all SD subjects --> ")
-            logging.info(kl_td_sd_subjects)
-            sd_closest_sub = np.argsort(kl_td_sd_subjects)[0]
-            logging.info('SD subject ' + str(sd_closest_sub) + ' is closest to this TD subject.')
-            pdfs_sd_close = pdfs_sd[np.argsort(kl_td_sd_subjects)[0:6], :, :] # select 5 close subjects
+            pdfs_sd = np.array(pdfs_sd)
+
+            # ================================================================
+            # save
+            # ================================================================
+            np.save(sd_pdfs_filename, pdfs_sd) # [num_subjects, num_channels, num_x_points]
+
+    # ================================================================
+    # compute the SD Gaussian PDFs once
+    # These will be passed as placeholders for computing the loss in each iteration
+    # ================================================================
+    elif args.KDE == 0:
+
+        sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise.npy'
+        
+        if os.path.isfile(sd_gaussians_filename):            
+            gaussians_sd = np.load(sd_gaussians_filename) # [num_subjects, num_channels, 2]
+        
+        else:
+            gaussians_sd = []
+            num_training_subjects = orig_data_siz_z_train.shape[0]            
+            for train_sub_num in range(num_training_subjects):            
+                
+                logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
+                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+                logging.info(sd_image.shape)
+                
+                batchwise = False
+                b_size_compute_sd_gaussians = 2
+                # =========================
+                # =========================
+                if batchwise == True:
+                    num_batches = 0
+                    for b_i in range(0, sd_image.shape[0], b_size_compute_sd_gaussians):
+                        if b_i + b_size_compute_sd_gaussians < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
+                            b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_gaussians, ...], axis=-1)})
+                            if b_i == 0:
+                                s_mu = b_mu
+                                s_var = b_var
+                            else:
+                                s_mu = s_mu + b_mu
+                                s_var = s_var + b_var
+                            num_batches = num_batches + 1
+                    s_mu = s_mu / num_batches
+                    s_var = s_var / num_batches
+                # =========================
+                # =========================
+                elif batchwise == False:
+                    s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
+
+                logging.info(s_mu.shape)
+                logging.info(s_var.shape)
+
+                # =========================
+                # =========================             
+                gaussians_sd.append(np.stack((s_mu, s_var), 1),)
+
+            gaussians_sd = np.array(gaussians_sd)
+
+            # ================================================================
+            # save
+            # ================================================================
+            np.save(sd_gaussians_filename, gaussians_sd) # [num_subjects, num_channels, 2]
     
     # ===================================
     # Set TTA vars to random values at the start of TTA, if requested
@@ -528,22 +592,19 @@ with tf.Graph().as_default():
                 tta_learning_rate = args.tta_learning_rate / 10.0
 
         # =============================
-        # SD PDF to match with
+        # SD PDF / Gaussian to match with
         # =============================
         if args.match_with_sd == 1: # match with mean PDF over SD subjects
-            sd_pdf_this_step = np.mean(pdfs_sd, axis = 0)
+            if args.KDE == 1:
+                sd_pdf_this_step = np.mean(pdfs_sd, axis = 0)
+            else:
+                sd_gaussian_this_step = np.mean(gaussians_sd, axis=0)
+
         elif args.match_with_sd == 2: # select a different SD subject for each TTA iteration
-            sd_pdf_this_step = pdfs_sd[np.random.randint(pdfs_sd.shape[0]), :, :]
-        elif args.match_with_sd == 3: # Match the target image's PDF to the closest SD PDF
-            if args.TTA_or_SFDA == 'TTA':
-                sd_pdf_this_step = pdfs_sd_close[0, :, :]
+            if args.KDE == 1:
+                sd_pdf_this_step = pdfs_sd[np.random.randint(pdfs_sd.shape[0]), :, :]
             else:
-                logging.info("CANNOT FIND 'CLOSEST' SD subject while doing SFDA!")
-        elif args.match_with_sd == 4: # Match the target image's PDF to one of the 5 closest SD PDFs (randomly chosen in each iteration)
-            if args.TTA_or_SFDA == 'TTA':
-                sd_pdf_this_step = pdfs_sd_close[np.random.randint(pdfs_sd_close.shape[0]), :, :]
-            else:
-                logging.info("CANNOT FIND 'CLOSEST 5' SD subjects while doing SFDA!")
+                sd_gaussian_this_step = gaussians_sd[np.random.randint(gaussians_sd.shape[0]), :, :]
                         
         # =============================
         # For SFDA, select a different TD subject in each adaptation epochs
@@ -561,44 +622,38 @@ with tf.Graph().as_default():
         # =============================
         b_size = args.b_size
         for b_i in range(0, test_image.shape[0], b_size):
+            if args.KDE == 1:      
+                feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
+                           sd_pdf_pl: sd_pdf_this_step, 
+                           x_pdf_pl: x_values, 
+                           alpha_pl: alpha,
+                           lr_pl: tta_learning_rate}
 
-            if args.batch_randomized == 0:
-                if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                    # run the accumulate gradients op 
-                    feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, :, :], axis=-1),
-                                sd_pdf_pl: sd_pdf_this_step, 
-                                sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
-                                x_pdf_pl: x_values, 
-                                alpha_pl: alpha,
-                                lr_pl: tta_learning_rate}
-                    sess.run(accumulate_gradients_op, feed_dict=feed_dict)
-                    loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
-                    num_accumulation_steps = num_accumulation_steps + 1
-
-            elif args.batch_randomized == 1:      
-                    # run the accumulate gradients op 
-                    feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
-                                sd_pdf_pl: sd_pdf_this_step, 
-                                sd_pdf_std_pl: np.std(pdfs_sd, axis = 0),
-                                x_pdf_pl: x_values, 
-                                alpha_pl: alpha,
-                                lr_pl: tta_learning_rate}
-                    sess.run(accumulate_gradients_op, feed_dict=feed_dict)
-                    loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
-                    num_accumulation_steps = num_accumulation_steps + 1
+            elif args.KDE == 0:      
+                feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
+                           sd_mu_pl: sd_gaussian_this_step[:,0], 
+                           sd_var_pl: sd_gaussian_this_step[:,1],
+                           lr_pl: tta_learning_rate}
+                
+            # run the accumulate gradients op 
+            sess.run(accumulate_gradients_op, feed_dict=feed_dict)
+            loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
+            num_accumulation_steps = num_accumulation_steps + 1
 
         loss_this_step = loss_this_step / num_accumulation_steps # average loss (over all slices of the image volume) in this step
 
         # ===========================
-        # save best model so far
+        # save best model so far (based on an exponential moving average of the TTA loss)
         # ===========================
-        if args.TTA_or_SFDA == 'TTA':
-            loss_for_deciding_best_model = loss_this_step
-        elif args.TTA_or_SFDA == 'SFDA': # TODO change this to something like a rolling average loss over multiple steps
-            loss_for_deciding_best_model = loss_this_step
+        momentum = 0.95
+        if step == 0:
+            loss_ema = loss_this_step
+        else:
+            loss_ema = momentum * loss_ema + (1 - momentum) * loss_this_step
+        summary_writer.add_summary(sess.run(loss_ema_summary, feed_dict={loss_ema_pl: loss_ema}), step)
 
-        if best_loss > loss_for_deciding_best_model:
-            best_loss = loss_for_deciding_best_model
+        if best_loss > loss_ema:
+            best_loss = loss_ema
             best_file = os.path.join(log_dir_tta, 'models/best_loss.ckpt')
             saver_tta_best.save(sess, best_file, global_step=step)
             logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
@@ -607,7 +662,9 @@ with tf.Graph().as_default():
         # run accumulated_gradients_mean_op, with a value for the placeholder num_accumulation_steps_pl; followed by the train_op with applies the gradients
         # ===========================
         sess.run(accumulated_gradients_mean_op, feed_dict = {num_accumulation_steps_pl: num_accumulation_steps})
-        # run the train_op. this also requires input output placeholders, as compute_gradients will be called again, but the returned gradient values will be replaced by the mean gradients.
+        # run the train_op.
+        # this also requires input output placeholders, as compute_gradients will be called again..
+        # But the returned gradient values will be replaced by the mean gradients.
         sess.run(train_op, feed_dict = feed_dict)
 
         # ===========================
@@ -659,7 +716,6 @@ with tf.Graph().as_default():
         # visualize 
         # ===========================
         if (step+1) % tta_vis_freq == 0:
-
             utils_vis.write_image_summaries(step,
                                             summary_writer,
                                             sess,
@@ -673,21 +729,22 @@ with tf.Graph().as_default():
             # ===========================
             # visualize feature distribution alignment
             # ===========================
-            b_size = args.b_size
-            num_batches = 0
-            for b_i in range(0, test_image.shape[0], b_size):
-                if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                    x_pdf_pl: x_values,
-                                                                    alpha_pl: alpha})
-                    if b_i == 0:
-                        pdfs_td_this_step = pdfs_this_batch
-                    else:
-                        pdfs_td_this_step = pdfs_td_this_step + pdfs_this_batch
-                    num_batches = num_batches + 1
-            pdfs_td_this_step = pdfs_td_this_step / num_batches
+            if args.KDE == 1:
+                b_size = args.b_size
+                num_batches = 0
+                for b_i in range(0, test_image.shape[0], b_size):
+                    if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
+                        pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
+                                                                        x_pdf_pl: x_values,
+                                                                        alpha_pl: alpha})
+                        if b_i == 0:
+                            pdfs_td_this_step = pdfs_this_batch
+                        else:
+                            pdfs_td_this_step = pdfs_td_this_step + pdfs_this_batch
+                        num_batches = num_batches + 1
+                pdfs_td_this_step = pdfs_td_this_step / num_batches
 
-            utils_vis.write_pdfs(step,
+                utils_vis.write_pdfs(step,
                                     summary_writer,
                                     sess,
                                     pdfs_summary,
@@ -698,30 +755,25 @@ with tf.Graph().as_default():
                                     x_values,
                                     log_dir_tta)
 
-            # ===========================
-            # visualize feature distribution alignment
-            # ===========================
-            b_i = 0
-            sd_cfs_batch_this_step = sess.run(sd_cfs, feed_dict={sd_pdf_pl: np.mean(pdfs_sd, axis = 0)})
-            td_cfs_batch_this_step = sess.run(td_cfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
+                # ===========================
+                # visualize feature distribution alignment
+                # ===========================
+                b_i = 0
+                sd_cfs_batch_this_step = sess.run(sd_cfs, feed_dict={sd_pdf_pl: np.mean(pdfs_sd, axis = 0)})
+                td_cfs_batch_this_step = sess.run(td_cfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
                                                                     x_pdf_pl: x_values,
                                                                     alpha_pl: alpha})
 
-            logging.info(sd_cfs_batch_this_step.shape)
-            logging.info(sd_cfs_batch_this_step.dtype)
-            logging.info(td_cfs_batch_this_step.shape)
-            logging.info(td_cfs_batch_this_step.dtype)
-
-            utils_vis.write_cfs(step,
-                                summary_writer,
-                                sess,
-                                cfs_abs_summary,
-                                cfs_angle_summary,
-                                display_cfs_abs_pl,
-                                display_cfs_angle_pl,
-                                sd_cfs_batch_this_step,
-                                td_cfs_batch_this_step,
-                                log_dir_tta)
+                utils_vis.write_cfs(step,
+                                    summary_writer,
+                                    sess,
+                                    cfs_abs_summary,
+                                    cfs_angle_summary,
+                                    display_cfs_abs_pl,
+                                    display_cfs_angle_pl,
+                                    sd_cfs_batch_this_step,
+                                    td_cfs_batch_this_step,
+                                    log_dir_tta)
 
         step = step + 1
 
