@@ -4,41 +4,58 @@
 import logging
 import os.path
 import numpy as np
-import config.system as sys_config
+import config.system_paths as sys_config
+import config.params as exp_config
 import argparse
 
-# read arguments
+# ==================================================================
+# parse arguments
+# ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--test_dataset', default = "USZ") # USZ / PROMISE / CALTECH / STANFORD
-parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "all_kl") # first / firsttwo / all
+# Training dataset and run number
+parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+# Test dataset 
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+# TTA options
+parser.add_argument('--tta_string', default = "TTA/")
+parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
+# Whether to compute KDE or not?
+parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
+parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+# Which vars to adapt?
+parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
+# How many moments to match and how?
+parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3
-parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+# Matching settings
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+# Learning rate settings
+parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+# Re-INIT TTA vars?
+parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
+# SFDA options
 parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
-parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
-parser.add_argument('--which_model', default = "last_iter") # last_iter / best_loss
+parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK (doesn't matter for TTA)
+# parse arguments
 args = parser.parse_args()
 
-# ==================================================================
-# Set the config file of the experiment you want to run here:
-# ==================================================================
-from experiments import i2i as exp_config
-log_root = sys_config.project_root + 'log_dir/'
+# ================================================================
+# Make the name for this TTA run
+# ================================================================
+exp_str = exp_config.make_tta_exp_name(args)
 
-log_dir_sd = log_root + exp_config.expname_i2l
-exp_str = exp_config.tta_string + 'tta_vars_' + args.tta_vars 
-exp_str = exp_str + '/moments_' + args.match_moments
-exp_str = exp_str + '_bsize' + str(args.b_size)
-exp_str = exp_str + '_rand' + str(args.batch_randomized)
-exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
-exp_str = exp_str + '_rand' + str(args.features_randomized)
-exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
-exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
-exp_str = exp_str + '/' 
+# ================================================================
+# Setup directories for this run
+# ================================================================
+expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 log_dir_tta = log_dir_sd + exp_str
 
 # ==================================================================
@@ -55,20 +72,16 @@ if args.TTA_or_SFDA == 'SFDA':
 test_dataset_name = args.test_dataset
 
 if test_dataset_name == 'PROMISE' or test_dataset_name == 'USZ':
-    if exp_config.normalize == True:
-        if args.which_model == 'last_iter':
-            with open(log_dir_tta + test_dataset_name + '_test_whole_gland_last_iter.txt', "r") as f:
-                lines = f.readlines()
-        else:
-            with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
-                lines = f.readlines()
+    if args.NORMALIZE == 1:
+        with open(log_dir_tta + test_dataset_name + '_test_whole_gland.txt', "r") as f:
+            lines = f.readlines()
     else:
         with open(log_dir_sd + test_dataset_name + '_test_whole_gland.txt', "r") as f:
             lines = f.readlines()
 
 elif test_dataset_name == 'CALTECH' or test_dataset_name == 'STANFORD':
-    if exp_config.normalize == True:
-        with open(log_dir_tta + test_dataset_name + '_test_last_iter.txt', "r") as f:
+    if args.NORMALIZE == 1:
+        with open(log_dir_tta + test_dataset_name + '_test.txt', "r") as f:
             lines = f.readlines()
     else:
         with open(log_dir_sd + test_dataset_name + '_test.txt', "r") as f:

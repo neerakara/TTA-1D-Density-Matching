@@ -8,84 +8,78 @@ import numpy as np
 import utils
 import utils_vis
 import model as model
-import config.system as sys_config
-
-import data.data_hcp as data_hcp
-import data.data_abide as data_abide
-import data.data_nci as data_nci
-import data.data_promise as data_promise
-import data.data_pirad_erc as data_pirad_erc
-import data.data_acdc as data_acdc
-import data.data_rvsc as data_rvsc
-
+import config.system_paths as sys_config
+import config.params as exp_config
 from skimage.transform import rescale
 import sklearn.metrics as met
-
 import argparse
 
-# read arguments
+# ==================================================================
+# parse arguments
+# ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
-parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
-parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
-parser.add_argument('--test_dataset', default = "CALTECH") # USZ / PROMISE / CALTECH / STANFORD
-parser.add_argument('--tta_vars', default = "norm") # bn / norm
-parser.add_argument('--match_moments', default = "CF") # first / firsttwo / all / all_kl
+# Training dataset and run number
+parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+# Test dataset 
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+# TTA options
+parser.add_argument('--tta_string', default = "TTA/")
+parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
+# Whether to compute KDE or not?
+parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
+parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+# Which vars to adapt?
+parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
+# How many moments to match and how?
+parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--batch_randomized', type = int, default = 1) # 1 / 0
 parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+# Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
-parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+# Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+# Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
+# SFDA options
 parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
-parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK
-parser.add_argument('--which_model', default = "last_iter") # last_iter / best_loss
+parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK (doesn't matter for TTA)
+# parse arguments
 args = parser.parse_args()
 
-# ==================================================================
-# Set the config file of the experiment you want to run here:
-# ==================================================================
-from experiments import i2i as exp_config
-log_root = sys_config.project_root + 'log_dir/'
+# ================================================================
+# set dataset dependent hyperparameters
+# ================================================================
+dataset_params = exp_config.get_dataset_dependent_params(args.train_dataset, args.test_dataset) 
+image_size = dataset_params[0]
+nlabels = dataset_params[1]
+target_resolution = dataset_params[2]
+image_depth_tr = dataset_params[3]
+image_depth_ts = dataset_params[4]
+whole_gland_results = dataset_params[5]
+tta_max_steps = dataset_params[6]
+tta_model_saving_freq = dataset_params[7]
+tta_vis_freq = dataset_params[8]
+
+# ================================================================
+# Make the name for this TTA run
+# ================================================================
+exp_str = exp_config.make_tta_exp_name(args)
+
+# ================================================================
+# Setup directories for this run
+# ================================================================
 expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-log_dir_sd = log_root + expname_i2l
-
-exp_str = exp_config.tta_string + 'tta_vars_' + args.tta_vars 
-exp_str = exp_str + '/moments_' + args.match_moments
-exp_str = exp_str + '_bsize' + str(args.b_size)
-exp_str = exp_str + '_rand' + str(args.batch_randomized)
-exp_str = exp_str + '_fs' + str(args.feature_subsampling_factor)
-exp_str = exp_str + '_rand' + str(args.features_randomized)
-exp_str = exp_str + '_sd_match' + str(args.match_with_sd)
-if args.tta_learning_rate != 0.001:
-    exp_str = exp_str + '_lr' + str(args.tta_learning_rate)
-if args.tta_learning_rate != 0:
-    exp_str = exp_str + '_sch' + str(args.tta_learning_sch)
-if args.tta_init_from_scratch == 1:
-    exp_str = exp_str + '_reinit_before_tta'
-if args.alpha != 100.0:
-    exp_str = exp_str + '_alpha' + str(args.alpha)
-exp_str = exp_str + '/' 
-
+log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 log_dir_tta = log_dir_sd + exp_str
 
 # ==================================================================
-# Set dataset dependent parameters
-# ==================================================================
-image_size = exp_config.image_size
-if args.train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
-    nlabels = exp_config.nlabels_brain
-    target_resolution = (0.7, 0.7)
-    whole_gland_results = False
-
-elif args.train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
-    nlabels = exp_config.nlabels_prostate
-    target_resolution = (0.625, 0.625)
-    whole_gland_results = True
-
-# ==================================================================
+# Identifier for SFDA
 # ==================================================================
 if args.TTA_or_SFDA == 'SFDA':
     if args.test_dataset == 'USZ':
@@ -98,7 +92,7 @@ if args.TTA_or_SFDA == 'SFDA':
 # ==================================================================
 def predict_segmentation(subject_name,
                          image,
-                         normalize = True):
+                         normalize = 1):
     
     # ================================================================
     # build the TF graph
@@ -142,9 +136,9 @@ def predict_segmentation(subject_name,
             if 'beta' in var_name or 'gamma' in var_name:
                 bn_vars.append(v)
 
-        if args.tta_vars == 'bn':
+        if args.tta_vars == 'BN':
             tta_vars = bn_vars
-        elif args.tta_vars == 'norm':
+        elif args.tta_vars == 'NORM':
             tta_vars = normalization_vars
                                 
         # ================================================================
@@ -185,20 +179,15 @@ def predict_segmentation(subject_name,
         # ================================================================
         # Restore the normalization network parameters
         # ================================================================
-        if normalize == True:
+        if normalize == 1:
             logging.info('============================================================')
-
             if args.TTA_or_SFDA == 'TTA':
                 subject_string = args.test_dataset + '_' + subject_name + '/'
                 path_to_model = log_dir_tta + subject_string + 'models/'
-                if args.which_model == 'best_loss':
-                    checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
-                elif args.which_model == 'last_iter':
-                    checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'model.ckpt')
             elif args.TTA_or_SFDA == 'SFDA':
                 path_to_model = log_dir_tta + td_string + 'models/'
-                checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'model.ckpt')
 
+            checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
             logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
             saver_tta.restore(sess, checkpoint_path)
             logging.info('============================================================')
@@ -272,200 +261,26 @@ def main():
     # read the test images
     # ===================================
     test_dataset_name = args.test_dataset
-    
-    if test_dataset_name == 'HCPT1':
-        logging.info('Reading HCPT1 images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
-        
-        image_depth = exp_config.image_depth_hcp
-        idx_start = 50
-        idx_end = 70       
-        
-        data_brain_test = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                               preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                               idx_start = idx_start,
-                                                               idx_end = idx_end,                
-                                                               protocol = 'T1',
-                                                               size = image_size,
-                                                               depth = image_depth,
-                                                               target_resolution = target_resolution)
+    loaded_test_data = utils.load_testing_data(test_dataset_name,
+                                               image_size,
+                                               target_resolution,
+                                               image_depth_ts)
 
-        imts = data_brain_test['images']
-        name_test_subjects = data_brain_test['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
-        ids = np.arange(idx_start, idx_end)
-
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
-        
-    elif test_dataset_name == 'HCPT2':
-        logging.info('Reading HCPT2 images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
-        
-        image_depth = exp_config.image_depth_hcp
-        idx_start = 50
-        idx_end = 70
-        
-        data_brain_test = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                               preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                               idx_start = idx_start,
-                                                               idx_end = idx_end,           
-                                                               protocol = 'T2',
-                                                               size = image_size,
-                                                               depth = image_depth,
-                                                               target_resolution = target_resolution)
-
-        imts = data_brain_test['images']
-        name_test_subjects = data_brain_test['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
-        ids = np.arange(idx_start, idx_end)
-
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
-        
-    elif test_dataset_name == 'CALTECH':
-        logging.info('Reading CALTECH images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')
-        
-        image_depth = exp_config.image_depth_caltech
-        idx_start = 16
-        idx_end = 36         
-        
-        data_brain_test = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
-                                                                 preprocessing_folder = sys_config.preproc_folder_abide,
-                                                                 site_name = 'CALTECH',
-                                                                 idx_start = idx_start,
-                                                                 idx_end = idx_end,             
-                                                                 protocol = 'T1',
-                                                                 size = image_size,
-                                                                 depth = image_depth,
-                                                                 target_resolution = target_resolution)
-
-        imts = data_brain_test['images']
-        name_test_subjects = data_brain_test['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
-        ids = np.arange(idx_start, idx_end)
-
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
-
-    # ================================================================
-    # load test data (ABIDE STANFORD T1)
-    # ================================================================
-    elif args.test_dataset == 'STANFORD':
-        logging.info('Reading STANFORD images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'STANFORD/')
-        
-        image_depth = exp_config.image_depth_stanford
-        idx_start = 16
-        idx_end = 36         
-        
-        data_brain = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
-                                                            preprocessing_folder = sys_config.preproc_folder_abide,
-                                                            site_name = 'STANFORD',
-                                                            idx_start = idx_start,
-                                                            idx_end = idx_end,             
-                                                            protocol = 'T1',
-                                                            size = image_size,
-                                                            depth = image_depth,
-                                                            target_resolution = target_resolution)
-
-        imts = data_brain['images']
-        gtts = data_brain['labels']
-        name_test_subjects = data_brain['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
-        ids = np.arange(idx_start, idx_end)
-
-        orig_data_res_x = data_brain['px'][:]
-        orig_data_res_y = data_brain['py'][:]
-        orig_data_res_z = data_brain['pz'][:]
-        orig_data_siz_x = data_brain['nx'][:]
-        orig_data_siz_y = data_brain['ny'][:]
-        orig_data_siz_z = data_brain['nz'][:]
-
-    elif test_dataset_name == 'NCI':
-        data_pros = data_nci.load_and_maybe_process_data(input_folder=sys_config.orig_data_root_nci,
-                                                         preprocessing_folder=sys_config.preproc_folder_nci,
-                                                         size=image_size,
-                                                         target_resolution=target_resolution,
-                                                         force_overwrite=False,
-                                                         cv_fold_num = 1)
-
-        imts = data_pros['images_test']
-        name_test_subjects = data_pros['patnames_test']
-
-        orig_data_res_x = data_pros['px_test'][:]
-        orig_data_res_y = data_pros['py_test'][:]
-        orig_data_res_z = data_pros['pz_test'][:]
-        orig_data_siz_x = data_pros['nx_test'][:]
-        orig_data_siz_y = data_pros['ny_test'][:]
-        orig_data_siz_z = data_pros['nz_test'][:]
-
-        num_test_subjects = orig_data_siz_z.shape[0]
-        ids = np.arange(num_test_subjects)
-
-    elif test_dataset_name == 'USZ':
-
-        idx_start = 0
-        idx_end = 20
-        ids = np.arange(idx_start, idx_end)
-
-        data_pros = data_pirad_erc.load_data(input_folder=sys_config.orig_data_root_pirad_erc,
-                                             preproc_folder=sys_config.preproc_folder_pirad_erc,
-                                             idx_start=idx_start,
-                                             idx_end=idx_end,
-                                             size=image_size,
-                                             target_resolution=target_resolution,
-                                             labeller='ek')
-        imts = data_pros['images']
-        name_test_subjects = data_pros['patnames']
-
-        orig_data_res_x = data_pros['px'][:]
-        orig_data_res_y = data_pros['py'][:]
-        orig_data_res_z = data_pros['pz'][:]
-        orig_data_siz_x = data_pros['nx'][:]
-        orig_data_siz_y = data_pros['ny'][:]
-        orig_data_siz_z = data_pros['nz'][:]
-
-        num_test_subjects = orig_data_siz_z.shape[0]
-
-    elif test_dataset_name == 'PROMISE':
-        data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
-                                                             preprocessing_folder = sys_config.preproc_folder_promise,
-                                                             size = image_size,
-                                                             target_resolution = target_resolution,
-                                                             force_overwrite = False,
-                                                             cv_fold_num = 2)
-        
-        imts = data_pros['images_test']
-        name_test_subjects = data_pros['patnames_test']
-        
-        orig_data_res_x = data_pros['px_test'][:]
-        orig_data_res_y = data_pros['py_test'][:]
-        orig_data_res_z = data_pros['pz_test'][:]
-        orig_data_siz_x = data_pros['nx_test'][:]
-        orig_data_siz_y = data_pros['ny_test'][:]
-        orig_data_siz_z = data_pros['nz_test'][:]
-
-        num_test_subjects = orig_data_siz_z.shape[0] 
-        ids = np.arange(num_test_subjects)
+    imts = loaded_test_data[0]
+    orig_data_res_x = loaded_test_data[2]
+    orig_data_res_y = loaded_test_data[3]
+    orig_data_res_z = loaded_test_data[4]
+    orig_data_siz_x = loaded_test_data[5]
+    orig_data_siz_y = loaded_test_data[6]
+    orig_data_siz_z = loaded_test_data[7]
+    name_test_subjects = loaded_test_data[8]
+    num_test_subjects = loaded_test_data[9]
+    ids = loaded_test_data[10]
             
     # ================================   
     # open a text file for writing the mean dice scores for each subject that is evaluated
     # ================================
-    if exp_config.normalize == True:
+    if args.NORMALIZE == 1:
         if args.TTA_or_SFDA == 'TTA':
             results_filename = log_dir_tta + test_dataset_name + '_test'
         elif args.TTA_or_SFDA == 'SFDA':
@@ -475,10 +290,6 @@ def main():
     
     if whole_gland_results == True:
         results_filename = results_filename + '_whole_gland'
-
-    # last iter or best loss
-    if args.which_model == 'last_iter':
-        results_filename = results_filename + '_' + args.which_model
     
     results_file = open(results_filename + '.txt', "w")
     results_file.write("================================== \n") 
@@ -506,7 +317,7 @@ def main():
         logging.info(subject_name)
 
         # If the 'models' directory does not exist for this subject, move onto the next one
-        if exp_config.normalize == True:
+        if args.NORMALIZE == 1:
             if not tf.gfile.Exists(log_dir_tta + test_dataset_name + '_' + subject_name + '/models/'):
                 continue
     
@@ -515,65 +326,16 @@ def main():
         # ==================================================================
         predicted_labels, normalized_image = predict_segmentation(subject_name,
                                                                   image,
-                                                                  exp_config.normalize)
+                                                                  args.NORMALIZE)
                 
         # ==================================================================
         # read the original segmentation mask
         # ==================================================================
-        if test_dataset_name == 'HCPT1':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_hcp.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_hcp,
-                                                                              idx = ids[sub_num],
-                                                                              protocol = 'T1',
-                                                                              preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                                              depth = image_depth)
-            num_rotations = 0  
-            
-        elif test_dataset_name == 'HCPT2':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_hcp.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_hcp,
-                                                                              idx = ids[sub_num],
-                                                                              protocol = 'T2',
-                                                                              preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                                              depth = image_depth)
-            num_rotations = 0  
-
-        elif test_dataset_name == 'CALTECH':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_abide.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_abide,
-                                                                               site_name = 'CALTECH',
-                                                                               idx = ids[sub_num],
-                                                                               depth = image_depth)
-            num_rotations = 0
-
-        elif test_dataset_name == 'STANFORD':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_abide.load_without_size_preprocessing(input_folder = sys_config.orig_data_root_abide,
-                                                                               site_name = 'STANFORD',
-                                                                               idx = ids[sub_num],
-                                                                               depth = image_depth)
-            num_rotations = 0
-
-        elif test_dataset_name == 'NCI':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_nci.load_without_size_preprocessing(sys_config.orig_data_root_nci,
-                                                                               cv_fold_num=1,
-                                                                               train_test='test',
-                                                                               idx=ids[sub_num])
-            num_rotations = 0
-
-        elif test_dataset_name == 'USZ':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_pirad_erc.load_without_size_preprocessing(sys_config.orig_data_root_pirad_erc,
-                                                                                     subject_name,
-                                                                                     labeller='ek')
-            num_rotations = -3
-
-        elif test_dataset_name == 'PROMISE':
-            # image will be normalized to [0,1]
-            image_orig, labels_orig = data_promise.load_without_size_preprocessing(sys_config.preproc_folder_promise,
-                                                                                   subject_name[4:6])
-            num_rotations = 0
+        image_orig, labels_orig, num_rotations = utils.load_testing_data_wo_preproc(test_dataset_name,
+                                                                                    ids,
+                                                                                    sub_num,
+                                                                                    subject_name,
+                                                                                    image_depth_ts)
 
         # ==================================================================
         # convert the predicitons back to original resolution
@@ -589,7 +351,7 @@ def main():
         # ==================================================================
         # Name of visualization
         # ==================================================================
-        if exp_config.normalize == True:
+        if args.NORMALIZE == 1:
             if args.TTA_or_SFDA == 'TTA':
                 savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name
             elif args.TTA_or_SFDA == 'SFDA':
@@ -607,10 +369,6 @@ def main():
             savepath = savepath + '_whole_gland'
         else:
             nl = nlabels
-
-        # last iter or best loss
-        if args.which_model == 'last_iter':
-            savepath = savepath + '_' + args.which_model
 
         # ==================================================================
         # compute dice at the original resolution
@@ -637,16 +395,18 @@ def main():
         # ================================================================
         # save sample results
         # ================================================================
-        d_vis = 32 # 256
-        ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
-        utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                 x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                 y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
-                                                 gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
-                                                 num_rotations = - num_rotations, # rotate for consistent visualization across datasets
-                                                 savepath = savepath + '.png',
-                                                 nlabels = nl,
-                                                 ids=ids_vis)
+        save_visual_results = False
+        if save_visual_results == True:
+            d_vis = 32 # 256
+            ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
+            utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
+                                                    x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
+                                                    y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
+                                                    gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
+                                                    num_rotations = - num_rotations, # rotate for consistent visualization across datasets
+                                                    savepath = savepath + '.png',
+                                                    nlabels = nl,
+                                                    ids=ids_vis)
                                    
         # ================================
         # write the mean fg dice of this subject to the text file

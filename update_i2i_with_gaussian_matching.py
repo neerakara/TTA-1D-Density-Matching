@@ -79,10 +79,17 @@ imtr, gttr, orig_data_siz_z_train, num_train_subjects = utils.load_training_data
 # ================================================================
 # load test data
 # ================================================================
-imts, gtts, orig_data_res_z, orig_data_siz_z, name_test_subjects, num_test_subjects = utils.load_testing_data(args.test_dataset,
-                                                                                                              image_size,
-                                                                                                              target_resolution,
-                                                                                                              image_depth_ts)
+loaded_test_data = utils.load_testing_data(args.test_dataset,
+                                           image_size,
+                                           target_resolution,
+                                           image_depth_ts)
+
+imts = loaded_test_data[0]
+gtts = loaded_test_data[1]
+orig_data_res_z = loaded_test_data[4]
+orig_data_siz_z = loaded_test_data[7]
+name_test_subjects = loaded_test_data[8]
+num_test_subjects = loaded_test_data[9]
 
 # ================================================================
 # Make the name for this TTA run
