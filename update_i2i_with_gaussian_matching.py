@@ -7,6 +7,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 import utils_vis
+import utils_kde
 import model as model
 import sklearn.metrics as met
 import config.system_paths as sys_config
@@ -214,30 +215,14 @@ with tf.Graph().as_default():
                 elif args.before_or_after_bn == 'AFTER':
                     features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
 
-                # Reshape to bring all those axes together where you want to take moments across
-                features = tf.reshape(features, (-1, features.shape[-1]))
-
-                # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
-                if args.feature_subsampling_factor != 1:
-                    
-                    if args.features_randomized == 0:
-                        features = features[::args.feature_subsampling_factor, :]
-                    
-                    elif args.features_randomized == 1:
-                        # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
-                        # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
-                        random_indices = tf.random.uniform(shape=[features.shape[0].value // args.feature_subsampling_factor],
-                                                           minval=0,
-                                                           maxval=features.shape[0].value - 1,
-                                                           dtype=tf.int32)
-                        features = tf.gather(features, random_indices, axis=0)
-
-                # Compute first two moments of the computed features
-                this_layer_means, this_layer_variances = tf.nn.moments(features, axes = [0])
-
+                # Compute the first two moments for all channels of this layer
+                this_layer_means, this_layer_variances = utils_kde.compute_feature_first_two_moments(features,
+                                                                                                     args.feature_subsampling_factor,
+                                                                                                     args.features_randomized)
                 td_means = tf.concat([td_means, this_layer_means], 0)
                 td_variances = tf.concat([td_variances, this_layer_variances], 0)
 
+        # Remove the 'dummy' first entry
         td_mu = td_means[1:]
         td_var = td_variances[1:]
 
@@ -248,7 +233,7 @@ with tf.Graph().as_default():
         loss_op = loss_gaussian_kl_op # mean over all channels of all layers
 
         # ================================================================
-        # add losses to tensorboard
+        # Add losses to tensorboard
         # ================================================================      
         tf.summary.scalar('loss/TTA', loss_op)         
         tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
@@ -275,37 +260,12 @@ with tf.Graph().as_default():
             for conv_sub_block in [1,2]:
                 conv_string = str(conv_block) + '_' + str(conv_sub_block)
                 features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
-                features_td = tf.reshape(features_td, (-1, features_td.shape[-1]))
 
-                # for Batch size 2:
-                # 1_1 (131072, 16), 1_2 (131072, 16), 2_1 (32768, 32), 2_2 (32768, 32)
-                # 3_1 (8192, 64), 3_2 (8192, 64), 4_1 (2048, 128), 4_2 (2048, 128)
-                # 5_1 (8192, 64), 5_2 (8192, 64), 6_1 (32768, 32), 6_2 (32768, 32)
-                # 7_1 (131072, 16), 7_2 (131072, 16)
-
-                # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
-                if args.feature_subsampling_factor != 1:
-                    if args.features_randomized == 0:
-                        features_td = features_td[::args.feature_subsampling_factor, :]
-                    elif args.features_randomized == 1:
-                        # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
-                        # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
-                        random_indices = tf.random.uniform(shape=[features_td.shape[0].value // args.feature_subsampling_factor],
-                                                            minval=0,
-                                                            maxval=features_td.shape[0].value - 1,
-                                                            dtype=tf.int32)
-                        features_td = tf.gather(features_td, random_indices, axis=0)
-
-                features_td = tf.tile(tf.expand_dims(features_td, 0), multiples = [x_pdf_pl.shape[0], 1, 1])
-                x_pdf_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x_pdf_pl, -1), -1), multiples = [1, features_td.shape[1], features_td.shape[2]])
-
-                # the 3 dimensions are : 
-                # 1. the intensity values where the pdf is evaluated,
-                # 2. all the features (the pixels along the 2 spatial dimensions as well as the batch dimension are considered 1D iid samples)
-                # 3. the channels 
-                channel_pdf_this_layer_td = tf.reduce_mean(tf.math.exp(-alpha_pl * tf.math.square(x_pdf_tmp - features_td)), axis=1)
-                channel_pdf_this_layer_td = tf.transpose(channel_pdf_this_layer_td)
-                # at the end, we get 1 pdf (evaluated at the intensity values in x_pdf_pl) per channel
+                channel_pdf_this_layer_td = utils_kde.compute_feature_kdes(features_td,
+                                                                           args.feature_subsampling_factor,
+                                                                           args.features_randomized,
+                                                                           x_pdf_pl,
+                                                                           alpha_pl)
                 
                 td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
         
@@ -315,38 +275,9 @@ with tf.Graph().as_default():
         # ================================================================
         # compute the TTA loss - add ops for all losses and select based on the argument
         # ================================================================
-
-        # ==================================
-        # Match all moments with KL loss
-        # ==================================
-        # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
-        loss_all_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdf_pl,
-                                                                       tf.math.log(tf.math.divide(sd_pdf_pl,
-                                                                                                  td_pdfs + 1e-5) + 1e-2)), axis = 1))
-
-        # ==================================
-        # Match first two moments with KL loss
-        # ==================================
-        # compute means (across spatial locations and the batch axis) from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
-        x_pdf_tiled = tf.tile(tf.expand_dims(x_pdf_pl, 0), multiples = [td_pdfs.shape[0], 1]) # [Nc, Nx]
-        td_pdf_means = tf.reduce_sum(tf.math.multiply(td_pdfs, x_pdf_tiled), axis = 1) # [Nc]
-        sd_pdf_means = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, x_pdf_tiled), axis = 1) # [Nc]
-        # compute variances (across spatial locations and the batch axis) from the PDFs, using the means computed above
-        # $ \sigma^2 = \sum_{i=xmin}^{xmax} (x - \mu)^2 * p(x) $
-        td_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(td_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
-        td_pdf_variances = tf.reduce_sum(tf.math.multiply(td_pdfs, td_pdf_variances_tmp), axis = 1) # [Nc]
-        sd_pdf_variances_tmp = tf.math.square(x_pdf_tiled - tf.tile(tf.expand_dims(sd_pdf_means, 1), multiples = [1, x_pdf_tiled.shape[1]]))
-        sd_pdf_variances = tf.reduce_sum(tf.math.multiply(sd_pdf_pl, sd_pdf_variances_tmp), axis = 1) # [Nc]
-        # D_KL (N(\mu_s, \sigma_s), N(\mu_t, \sigma_t)) = log(\sigma_t**2 / \sigma_s**2) + (\sigma_s**2 + (\mu_s - \mu_t)**2) / (\sigma_t**2)
-        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_pdf_variances / sd_pdf_variances) + (sd_pdf_variances + (sd_pdf_means - td_pdf_means)**2) / td_pdf_variances)
-
-        # ==================================
-        # Match Full PDFs by min. L2 distance between the corresponding Characteristic Functions (complex)
-        # ==================================
-        # compute CFs of the source and target domains
-        td_cfs = tf.spectral.rfft(td_pdfs)
-        sd_cfs = tf.spectral.rfft(sd_pdf_pl)
-        loss_all_cf_l2_op = tf.reduce_mean(tf.math.abs(td_cfs - sd_cfs)) # mean over all channels of all layers and all frequencies
+        loss_all_kl_op, loss_gaussian_kl_op, loss_all_cf_l2_op = utils_kde.compute_kde_losses(sd_pdf_pl,
+                                                                                              td_pdfs,
+                                                                                              x_pdf_pl)
         
         # ==================================
         # Select loss to be minimized according to the arguments
@@ -473,44 +404,21 @@ with tf.Graph().as_default():
         
         if os.path.isfile(sd_pdfs_filename):            
             pdfs_sd = np.load(sd_pdfs_filename) # [num_subjects, num_channels, num_x_points]
-        
         else:
-            pdfs_sd = []
-            num_training_subjects = orig_data_siz_z_train.shape[0]            
-            for train_sub_num in range(num_training_subjects):            
-                
-                logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
-                if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-                    sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
-                else:
-                    sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-                logging.info(sd_image.shape)
-                
-                num_batches = 0
-                
-                for b_i in range(0, sd_image.shape[0], b_size_compute_sd_pdfs):
-                    if b_i + b_size_compute_sd_pdfs < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                        pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_pdfs, ...], axis=-1),
-                                                                        x_pdf_pl: x_values,
-                                                                        alpha_pl: alpha})
-                        if b_i == 0:
-                            pdfs_this_subject = pdfs_this_batch
-
-                        else:
-                            pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
-
-                        num_batches = num_batches + 1
-                
-                pdfs_this_subject = pdfs_this_subject / num_batches
-
-                pdfs_sd.append(pdfs_this_subject)
-
-            pdfs_sd = np.array(pdfs_sd)
-
-            # ================================================================
+            pdfs_sd = utils_kde.compute_sd_pdfs(args.train_dataset,
+                                                imtr,
+                                                image_depth_tr,
+                                                orig_data_siz_z_train,
+                                                b_size_compute_sd_pdfs,
+                                                sess,
+                                                td_pdfs,
+                                                images_pl,
+                                                x_pdf_pl,
+                                                x_values
+                                                alpha_pl,
+                                                alpha)
             # save
-            # ================================================================
-            np.save(sd_pdfs_filename, pdfs_sd) # [num_subjects, num_channels, num_x_points]
+            np.save(sd_pdfs_filename, pdfs_sd)
 
     # ================================================================
     # compute the SD Gaussian PDFs once
@@ -525,54 +433,18 @@ with tf.Graph().as_default():
         
         if os.path.isfile(sd_gaussians_filename):            
             gaussians_sd = np.load(sd_gaussians_filename) # [num_subjects, num_channels, 2]
-        
         else:
-            gaussians_sd = []
-            num_training_subjects = orig_data_siz_z_train.shape[0]            
-            for train_sub_num in range(num_training_subjects):            
-                
-                logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
-                if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-                    sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
-                else:
-                    sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-                logging.info(sd_image.shape)
-                
-                # =========================
-                # =========================
-                if b_size_compute_sd_gaussians != 0:
-                    num_batches = 0
-                    for b_i in range(0, sd_image.shape[0], b_size_compute_sd_gaussians):
-                        if b_i + b_size_compute_sd_gaussians < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
-                            b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size_compute_sd_gaussians, ...], axis=-1)})
-                            if b_i == 0:
-                                s_mu = b_mu
-                                s_var = b_var
-                            else:
-                                s_mu = s_mu + b_mu
-                                s_var = s_var + b_var
-                            num_batches = num_batches + 1
-                    s_mu = s_mu / num_batches
-                    s_var = s_var / num_batches
-                # =========================
-                # Use full images to compute stats
-                # =========================
-                elif b_size_compute_sd_gaussians == 0:
-                    s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
-
-                logging.info(s_mu.shape)
-                logging.info(s_var.shape)
-
-                # =========================
-                # =========================             
-                gaussians_sd.append(np.stack((s_mu, s_var), 1),)
-
-            gaussians_sd = np.array(gaussians_sd)
-
-            # ================================================================
+            gaussians_sd = utils_kde.compute_sd_gaussians(args.train_dataset,
+                                                          imtr,
+                                                          image_depth_tr,
+                                                          orig_data_siz_z_train,
+                                                          b_size_compute_sd_gaussians,
+                                                          sess,
+                                                          td_mu,
+                                                          td_var,
+                                                          images_pl)
             # save
-            # ================================================================
-            np.save(sd_gaussians_filename, gaussians_sd) # [num_subjects, num_channels, 2]
+            np.save(sd_gaussians_filename, gaussians_sd)
     
     # ===================================
     # Set TTA vars to random values at the start of TTA, if requested
