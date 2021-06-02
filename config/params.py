@@ -78,12 +78,12 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         if train_dataset == 'STANFORD':
             image_depth_tr = 132
         else:
-            image_depth_tr = 256
+            image_depth_tr = 256   
 
         if test_dataset == 'STANFORD':
             image_depth_ts = 132
         else:
-            image_depth_ts = 256
+            image_depth_ts = 256            
 
         # =================================
         # Whether to evaluate binary dice or over multiple classes
@@ -93,9 +93,14 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         # =================================
         # number of TTA iterations
         # =================================
-        tta_max_steps = 201 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
-        tta_model_saving_freq = 25
-        tta_vis_freq = 5 
+        tta_max_steps = 251 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_model_saving_freq = 50
+        tta_vis_freq = 25 
+
+        # =================================
+        # =================================
+        b_size_compute_sd_pdfs = 16
+        b_size_compute_sd_gaussians = 16
 
     elif train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
 
@@ -123,6 +128,11 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         tta_model_saving_freq = 250
         tta_vis_freq = 50
 
+        # =================================
+        # =================================
+        b_size_compute_sd_pdfs = 2
+        b_size_compute_sd_gaussians = 0 # Use full images
+
     return (image_size, # 0
             nlabels, # 1
             target_resolution, # 2
@@ -131,7 +141,9 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
             whole_gland_results, # 5
             tta_max_steps, # 6
             tta_model_saving_freq, # 7
-            tta_vis_freq) # 8
+            tta_vis_freq, # 8
+            b_size_compute_sd_pdfs, # 9
+            b_size_compute_sd_gaussians) # 10
 
 # ================================================================
 # Function to make the name for the experiment run according to TTA parameters

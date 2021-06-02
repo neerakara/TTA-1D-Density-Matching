@@ -9,14 +9,8 @@ import utils
 import utils_vis
 import model as model
 import sklearn.metrics as met
-import config.system as sys_config
-
-import data.data_hcp as data_hcp
-import data.data_abide as data_abide
-import data.data_nci as data_nci
-import data.data_promise as data_promise
-import data.data_pirad_erc as data_pirad_erc
-
+import config.system_paths as sys_config
+import config.params as exp_config
 import argparse
 
 import matplotlib
@@ -29,81 +23,92 @@ import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
 # ==================================================================
-# Set the config file of the experiment you want to run here:
+# parse arguments
 # ==================================================================
-from experiments import i2i as exp_config
-target_resolution = exp_config.target_resolution
-image_size = exp_config.image_size
-nlabels = exp_config.nlabels
+parser = argparse.ArgumentParser(prog = 'PROG')
+# Training dataset and run number
+parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+# Test dataset 
+parser.add_argument('--test_dataset', default = "HCPT2") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+# parse arguments
+args = parser.parse_args()
 
-# ==================================================================
-# Read PROMISE
-# ==================================================================
-# data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
-#                                                         preprocessing_folder = sys_config.preproc_folder_promise,
-#                                                         size = image_size,
-#                                                         target_resolution = target_resolution,
-#                                                         force_overwrite = False,
-#                                                         cv_fold_num = 2)
-
-# imts = data_pros['images_test']
-# gtts = data_pros['masks_test']
-# name_test_subjects = data_pros['patnames_test']
-
-# orig_data_res_x = data_pros['px_test'][:]
-# orig_data_res_y = data_pros['py_test'][:]
-# orig_data_res_z = data_pros['pz_test'][:]
-# orig_data_siz_x = data_pros['nx_test'][:]
-# orig_data_siz_y = data_pros['ny_test'][:]
-# orig_data_siz_z = data_pros['nz_test'][:]
-
-# num_test_subjects = orig_data_siz_z.shape[0] 
-# ids = np.arange(num_test_subjects)
-
-# logging.info(name_test_subjects)
-
-# for sub_num in range(20):
-#     logging.info("PROMISE subject " + str(sub_num) + ": " + str(name_test_subjects[sub_num])[2:-1] + ", res in z: " + str(orig_data_res_z[sub_num]) + ", num slices: " + str(orig_data_siz_z[sub_num]))
+# ================================================================
+# set dataset dependent hyperparameters
+# ================================================================
+dataset_params = exp_config.get_dataset_dependent_params(args.train_dataset, args.test_dataset) 
+image_size = dataset_params[0]
+nlabels = dataset_params[1]
+target_resolution = dataset_params[2]
+image_depth_tr = dataset_params[3]
+image_depth_ts = dataset_params[4]
+whole_gland_results = dataset_params[5]
+tta_max_steps = dataset_params[6]
+tta_model_saving_freq = dataset_params[7]
+tta_vis_freq = dataset_params[8]
 
 # ==================================================================
-# Read NCI
+# Read Training Data
 # ==================================================================
-# data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
-#                                                  preprocessing_folder = sys_config.preproc_folder_nci,
-#                                                  size = image_size,
-#                                                  target_resolution = target_resolution,
-#                                                  force_overwrite = False,
-#                                                  cv_fold_num = 1)
+imtr, gttr, orig_data_siz_z_train, num_train_subjects = utils.load_training_data(args.train_dataset,
+                                                                                 image_size,
+                                                                                 target_resolution)
 
-# imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
-# imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
-# orig_data_siz_z_train = data_pros['nz_train'][:]
-# orig_data_res_z_train = data_pros['pz_train'][:]
-# name_train_subjects = data_pros['patnames_train']
+for sub_num in range(20):
+    logging.info("Subject " + str(sub_num) + ": num slices: " + str(orig_data_siz_z_train[sub_num]))
+    subject_id_start_slice = np.sum(orig_data_siz_z_train[:sub_num])
+    subject_id_end_slice = np.sum(orig_data_siz_z_train[:sub_num+1])
+    image = imtr[subject_id_start_slice:subject_id_end_slice,:,:]  
+    logging.info("Train image shape " + str(image.shape))
 
-# for sub_num in range(orig_data_siz_z_train.shape[0]):
-#     logging.info("NCI subject " + str(sub_num) + ": " + str(name_train_subjects[sub_num])[2:-1] + ", res in z: " + str(orig_data_res_z_train[sub_num]) + ", num slices: " + str(orig_data_siz_z_train[sub_num]))
+# ==================================================================
+# Read Test Data
+# ==================================================================
+loaded_test_data = utils.load_testing_data(args.test_dataset,
+                                           image_size,
+                                           target_resolution,
+                                           image_depth_ts)
+
+imts = loaded_test_data[0]
+orig_data_res_x = loaded_test_data[2]
+orig_data_res_y = loaded_test_data[3]
+orig_data_res_z = loaded_test_data[4]
+orig_data_siz_x = loaded_test_data[5]
+orig_data_siz_y = loaded_test_data[6]
+orig_data_siz_z = loaded_test_data[7]
+name_test_subjects = loaded_test_data[8]
+num_test_subjects = loaded_test_data[9]
+ids = loaded_test_data[10]
+
+logging.info(name_test_subjects)
+for sub_num in range(20):
+    logging.info("Subject " + str(sub_num) + ": " + str(name_test_subjects[sub_num])[2:-1] + ", res in z: " + str(orig_data_res_z[sub_num]) + ", num slices: " + str(orig_data_siz_z[sub_num]))
+    subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
+    subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])
+    image = imts[subject_id_start_slice:subject_id_end_slice,:,:]  
+    logging.info("Test image shape " + str(image.shape))
 
 # ==================================================================
 # Plotting SD KDEs
 # ==================================================================
-path_to_model = sys_config.project_root + 'log_dir/' + exp_config.expname_i2l + 'models/'
-b_size = 2
-alpha = 10.0
-res = 0.1
-x_min = -3.0
-x_max = 3.0
-pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
-x_values = np.arange(x_min, x_max + res, res)
-sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
+# path_to_model = sys_config.project_root + 'log_dir/' + exp_config.expname_i2l + 'models/'
+# b_size = 2
+# alpha = 10.0
+# res = 0.1
+# x_min = -3.0
+# x_max = 3.0
+# pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
+# x_values = np.arange(x_min, x_max + res, res)
+# sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
 
-sd_kdes = np.load(sd_pdfs_filename)
-print(sd_kdes.shape)
+# sd_kdes = np.load(sd_pdfs_filename)
+# print(sd_kdes.shape)
     
-for delta in [0, 32, 96, 224, 480, 608, 672]:                
-    for c in range(5):
-        plt.figure(figsize=[2.5,2.5])
-        for s in range(sd_kdes.shape[0]):
-            plt.plot(np.arange(x_min, x_max + res, res), sd_kdes[s, c + delta, :])
-        plt.savefig(path_to_model + 'sd_pdfs_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
-        plt.close()
+# for delta in [0, 32, 96, 224, 480, 608, 672]:                
+#     for c in range(5):
+#         plt.figure(figsize=[2.5,2.5])
+#         for s in range(sd_kdes.shape[0]):
+#             plt.plot(np.arange(x_min, x_max + res, res), sd_kdes[s, c + delta, :])
+#         plt.savefig(path_to_model + 'sd_pdfs_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
+#         plt.close()

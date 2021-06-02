@@ -23,31 +23,31 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "CALTECH") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 # Whether to compute KDE or not?
 parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
-parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
-parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--match_moments', default = "Gaussian_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
-parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
-parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 # Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 # SFDA options
@@ -68,6 +68,8 @@ image_depth_ts = dataset_params[4]
 tta_max_steps = dataset_params[6]
 tta_model_saving_freq = dataset_params[7]
 tta_vis_freq = dataset_params[8]
+b_size_compute_sd_pdfs = dataset_params[9]
+b_size_compute_sd_gaussians = dataset_params[10]
 
 # ================================================================
 # load training data (for computing SD PDFs)
@@ -153,9 +155,10 @@ with tf.Graph().as_default():
     # create placeholders
     # ================================================================
     if args.KDE == 1:
+        # If SD stats have not been computed so far, run once with b_size set to b_size_compute_sd_pdfs
         images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
     else:
-        # Set first entry of shape to None to compute SD stats over entire volumes
+        # If SD stats have not been computed so far, run once with b_size set to b_size_compute_sd_gaussians
         images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
     training_pl = tf.constant(False, dtype=tf.bool)
     # ================================================================
@@ -460,7 +463,6 @@ with tf.Graph().as_default():
     # These will be passed as placeholders for computing the loss in each iteration
     # ================================================================
     if args.KDE == 1:
-        b_size_compute_sd_pdfs = 2
         alpha = args.alpha
         res = 0.1
         x_min = -3.0
@@ -478,7 +480,10 @@ with tf.Graph().as_default():
             for train_sub_num in range(num_training_subjects):            
                 
                 logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
-                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+                if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+                    sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+                else:
+                    sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
                 logging.info(sd_image.shape)
                 
                 num_batches = 0
@@ -512,8 +517,11 @@ with tf.Graph().as_default():
     # These will be passed as placeholders for computing the loss in each iteration
     # ================================================================
     elif args.KDE == 0:
-
-        sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise.npy'
+        
+        if b_size_compute_sd_gaussians != 0:
+            sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise' + '_bsize' + str(b_size_compute_sd_gaussians) + '.npy'
+        else:
+            sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise.npy'
         
         if os.path.isfile(sd_gaussians_filename):            
             gaussians_sd = np.load(sd_gaussians_filename) # [num_subjects, num_channels, 2]
@@ -524,14 +532,15 @@ with tf.Graph().as_default():
             for train_sub_num in range(num_training_subjects):            
                 
                 logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
-                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+                if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+                    sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+                else:
+                    sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
                 logging.info(sd_image.shape)
                 
-                batchwise = False
-                b_size_compute_sd_gaussians = 2
                 # =========================
                 # =========================
-                if batchwise == True:
+                if b_size_compute_sd_gaussians != 0:
                     num_batches = 0
                     for b_i in range(0, sd_image.shape[0], b_size_compute_sd_gaussians):
                         if b_i + b_size_compute_sd_gaussians < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
@@ -546,8 +555,9 @@ with tf.Graph().as_default():
                     s_mu = s_mu / num_batches
                     s_var = s_var / num_batches
                 # =========================
+                # Use full images to compute stats
                 # =========================
-                elif batchwise == False:
+                elif b_size_compute_sd_gaussians == 0:
                     s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
 
                 logging.info(s_mu.shape)
@@ -597,6 +607,8 @@ with tf.Graph().as_default():
                 tta_learning_rate = args.tta_learning_rate
             else:
                 tta_learning_rate = args.tta_learning_rate / 10.0
+        elif args.tta_learning_sch == 0:
+            tta_learning_rate = args.tta_learning_rate
 
         # =============================
         # SD PDF / Gaussian to match with

@@ -19,31 +19,31 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "CALTECH") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 # Whether to compute KDE or not?
-parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
-parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE', type = int, default = 0) # 0 to 1
+parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
-parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--match_moments', default = "Gaussian_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
-parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
-parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 # Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 # SFDA options
@@ -301,7 +301,7 @@ def main():
     dice_per_label_per_subject = []
     hsd_per_label_per_subject = []
 
-    for sub_num in range(num_test_subjects):
+    for sub_num in range(10):#(num_test_subjects):
 
         subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
         subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])

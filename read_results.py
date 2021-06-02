@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
@@ -36,8 +36,8 @@ parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
-parser.add_argument('--tta_learning_sch', type = int, default = 1) # 0 / 1
+parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 # Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 # SFDA options

@@ -713,12 +713,12 @@ def load_testing_data(test_dataset,
 
         imts = data_brain['images']
         gtts = data_brain['labels']
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
+        orig_data_res_x = data_brain['px'][:]
+        orig_data_res_y = data_brain['py'][:]
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_x = data_brain['nx'][:]
+        orig_data_siz_y = data_brain['ny'][:]
+        orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
         num_test_subjects = imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
@@ -745,12 +745,12 @@ def load_testing_data(test_dataset,
 
         imts = data_brain['images']
         gtts = data_brain['labels']
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
+        orig_data_res_x = data_brain['px'][:]
+        orig_data_res_y = data_brain['py'][:]
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_x = data_brain['nx'][:]
+        orig_data_siz_y = data_brain['ny'][:]
+        orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
         num_test_subjects = imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
@@ -777,12 +777,12 @@ def load_testing_data(test_dataset,
 
         imts = data_brain['images']
         gtts = data_brain['labels']
-        orig_data_res_x = data_brain_test['px'][:]
-        orig_data_res_y = data_brain_test['py'][:]
-        orig_data_res_z = data_brain_test['pz'][:]
-        orig_data_siz_x = data_brain_test['nx'][:]
-        orig_data_siz_y = data_brain_test['ny'][:]
-        orig_data_siz_z = data_brain_test['nz'][:]
+        orig_data_res_x = data_brain['px'][:]
+        orig_data_res_y = data_brain['py'][:]
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_x = data_brain['nx'][:]
+        orig_data_siz_y = data_brain['ny'][:]
+        orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
         num_test_subjects = imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
