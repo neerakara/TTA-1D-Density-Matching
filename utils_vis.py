@@ -329,7 +329,7 @@ def save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, c, savedir
     plt.figure(figsize=[1.5,1.5])
     x = np.linspace(sd_means[c] - 3*np.sqrt(sd_variances[c]), sd_means[c] + 3*np.sqrt(sd_variances[c]), 20)
     plt.plot(x, norm.pdf(x, sd_means[c], np.sqrt(sd_variances[c])), 'b')
-    plt.plot(x, norm.pdf(x, td_means[c], np.sqrt(td_variances[c])), 'c.')
+    plt.plot(x, norm.pdf(x, td_means[c], np.sqrt(td_variances[c])), 'c')
     plt.savefig(savedir + '/tmp.png')
     plt.close()
 
@@ -384,7 +384,7 @@ def save_tmp_pdf_and_load(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, c, savedir):
     plt.figure(figsize=[1.5,1.5])
     plt.plot(x, pdfs_SD_mu[c,:], 'b')
     plt.fill_between(x, pdfs_SD_mu[c,:] - 1*pdfs_SD_std[c,:], pdfs_SD_mu[c,:] + 1*pdfs_SD_std[c,:], alpha = 0.5)
-    plt.plot(x, pdfs_TD[c,:], 'c.')
+    plt.plot(x, pdfs_TD[c,:], 'c')
     plt.savefig(savedir + '/tmp.png')
     plt.close()
 

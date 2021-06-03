@@ -20,9 +20,9 @@ def compute_feature_first_two_moments(features,
             # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
             # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
             random_indices = tf.random.uniform(shape=[features.shape[0].value // feature_subsampling_factor],
-                                                minval=0,
-                                                maxval=features.shape[0].value - 1,
-                                                dtype=tf.int32)
+                                               minval=0,
+                                               maxval=features.shape[0].value - 1,
+                                               dtype=tf.int32)
             features = tf.gather(features, random_indices, axis=0)
 
     # Return first two moments of the computed features
@@ -73,20 +73,60 @@ def compute_feature_kdes(features,
 
 # ==============================================
 # ==============================================
+def sample_sd_points(pdfs_sd_this_step,
+                     num_pts_lebesgue,
+                     x_values):
+
+    # sample x_values from this pdf - the log-ratio in KL-divergence will be computed at these points
+    x_indices_lebesgue = np.zeros((pdfs_sd_this_step.shape[0], num_pts_lebesgue, 2))
+    for c in range(pdfs_sd_this_step.shape[0]):
+        sd_pdf_this_step_this_channel = pdfs_sd_this_step[c,:]
+        sd_pdf_this_step_this_channel = sd_pdf_this_step_this_channel / np.sum(sd_pdf_this_step_this_channel)
+        x_indices_lebesgue[c,:,0] = c
+        x_indices_lebesgue[c,:,1] = np.random.choice(np.arange(x_values.shape[0]), num_pts_lebesgue, p=sd_pdf_this_step_this_channel)
+
+    return x_indices_lebesgue.astype(np.uint8)
+
+# ==============================================
+# D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
+# ==============================================
+def compute_kl_between_kdes(sd_pdfs,
+                            td_pdfs,
+                            x_indices_lebesgue = None):
+
+    # (via Riemann integral)
+    if x_indices_lebesgue == None:
+        loss_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdfs,
+                                                                   tf.math.log(tf.math.divide(sd_pdfs,
+                                                                                              td_pdfs + 1e-5) + 1e-2)), axis = 1))
+
+    # (via Lebesgue integral)
+    else:
+        loss_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.log(tf.math.divide(tf.gather_nd(sd_pdfs, x_indices_lebesgue),
+                                                                             tf.gather_nd(td_pdfs, x_indices_lebesgue) + 1e-5) + 1e-2), axis = 1))
+
+    return loss_kl_op
+                                                                                            
+# ==============================================
+# ==============================================
 def compute_kde_losses(sd_pdfs,
                        td_pdfs,
-                       x):
+                       x,
+                       x_indices_lebesgue):
 
     # ==================================
     # Match all moments with KL loss
     # ==================================
-    # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
-    loss_all_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdfs,
-                                                                   tf.math.log(tf.math.divide(sd_pdfs,
-                                                                                              td_pdfs + 1e-5) + 1e-2)), axis = 1))
+    loss_all_kl_op = compute_kl_between_kdes(sd_pdfs, td_pdfs)
 
     # ==================================
-    # Match first two moments with KL loss
+    # Match all moments with KL loss (via Lebesgue integral)
+    # ==================================
+    loss_all_kl_lebesgue_op = compute_kl_between_kdes(sd_pdfs, td_pdfs, x_indices_lebesgue)
+
+    # ==================================
+    # Match first two moments with KL loss (via the KDEs)
+    # (The means and variance estimators computed like this may have different behaviour that the mean and variance estimators directly computed from the samples.)
     # ==================================
     # compute means (across spatial locations and the batch axis) from the PDFs : $ \mu = \sum_{i=xmin}^{xmax} x * p(x) $
     x_tiled = tf.tile(tf.expand_dims(x, 0), multiples = [td_pdfs.shape[0], 1]) # [Nc, Nx]
@@ -102,14 +142,14 @@ def compute_kde_losses(sd_pdfs,
     loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_pdf_variances / sd_pdf_variances) + (sd_pdf_variances + (sd_pdf_means - td_pdf_means)**2) / td_pdf_variances)
 
     # ==================================
-    # Match Full PDFs by min. L2 distance between the corresponding Characteristic Functions (complex)
+    # Match Full PDFs by minimizing the L2 distance between the corresponding Characteristic Functions (complex space)
     # ==================================
     # compute CFs of the source and target domains
     td_cfs = tf.spectral.rfft(td_pdfs)
     sd_cfs = tf.spectral.rfft(sd_pdfs)
     loss_all_cf_l2_op = tf.reduce_mean(tf.math.abs(td_cfs - sd_cfs)) # mean over all channels of all layers and all frequencies
 
-    return loss_all_kl_op, loss_gaussian_kl_op, loss_all_cf_l2_op
+    return loss_all_kl_op, loss_all_kl_lebesgue_op, loss_gaussian_kl_op, loss_all_cf_l2_op, sd_cfs, td_cfs
 
 # ==================================
 # ==================================
@@ -122,7 +162,7 @@ def compute_sd_pdfs(train_dataset,
                     td_pdfs,
                     images_pl,
                     x_pdf_pl,
-                    x_values
+                    x_values,
                     alpha_pl,
                     alpha):
 

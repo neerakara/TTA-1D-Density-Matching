@@ -42,8 +42,8 @@ parser.add_argument('--match_moments', default = "Gaussian_KL") # Gaussian_KL / 
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
-parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
@@ -251,6 +251,9 @@ with tf.Graph().as_default():
         x_pdf_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs') # shape [num_points_along_intensity_range]
         # placeholder for the smoothing factor in the KDE computation
         alpha_pl = tf.placeholder(tf.float32, shape = [], name = 'alpha') # shape [1]
+        # placeholder for x_values sampled from sd_pdfs (will be used to compute Lebesgue integral in KL divergence)
+        num_pts_lebesgue = 50
+        x_indices_lebesgue_pl = tf.placeholder(tf.int32, shape = [704, num_pts_lebesgue, 2], name = 'x_indices_lebesgue') # shape [num_channels, num_indices]
 
         # ================================================================
         # compute the pdfs of features of the TD image that is fed via the placeholder
@@ -275,9 +278,10 @@ with tf.Graph().as_default():
         # ================================================================
         # compute the TTA loss - add ops for all losses and select based on the argument
         # ================================================================
-        loss_all_kl_op, loss_gaussian_kl_op, loss_all_cf_l2_op = utils_kde.compute_kde_losses(sd_pdf_pl,
-                                                                                              td_pdfs,
-                                                                                              x_pdf_pl)
+        loss_all_kl_op, loss_all_kl_lebesgue_op, loss_gaussian_kl_op, loss_all_cf_l2_op, sd_cfs, td_cfs = utils_kde.compute_kde_losses(sd_pdf_pl,
+                                                                                                                                       td_pdfs,
+                                                                                                                                       x_pdf_pl,
+                                                                                                                                       x_indices_lebesgue_pl)
         
         # ==================================
         # Select loss to be minimized according to the arguments
@@ -285,6 +289,8 @@ with tf.Graph().as_default():
         # match full PDFs with KL loss
         if args.match_moments == 'All_KL': 
             loss_op = loss_all_kl_op
+        if args.match_moments == 'All_KL_LEBESGUE': 
+            loss_op = loss_all_kl_lebesgue_op
         # match Gaussian with KL loss
         elif args.match_moments == 'Gaussian_KL':
             loss_op = loss_gaussian_kl_op
@@ -297,6 +303,7 @@ with tf.Graph().as_default():
         # ================================================================
         tf.summary.scalar('loss/TTA', loss_op)         
         tf.summary.scalar('loss/All_KL', loss_all_kl_op)
+        tf.summary.scalar('loss/All_KL_LEBESGUE', loss_all_kl_lebesgue_op)
         tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
         tf.summary.scalar('loss/All_CF_L2', loss_all_cf_l2_op)
         summary_during_tta = tf.summary.merge_all()
@@ -414,11 +421,11 @@ with tf.Graph().as_default():
                                                 td_pdfs,
                                                 images_pl,
                                                 x_pdf_pl,
-                                                x_values
+                                                x_values,
                                                 alpha_pl,
                                                 alpha)
             # save
-            np.save(sd_pdfs_filename, pdfs_sd)
+            np.save(sd_pdfs_filename, pdfs_sd) 
 
     # ================================================================
     # compute the SD Gaussian PDFs once
@@ -488,12 +495,18 @@ with tf.Graph().as_default():
         if args.match_with_sd == 1: # match with mean PDF over SD subjects
             if args.KDE == 1:
                 sd_pdf_this_step = np.mean(pdfs_sd, axis = 0)
+                x_indices_lebesgue_this_step = utils_kde.sample_sd_points(sd_pdf_this_step,
+                                                                          num_pts_lebesgue,
+                                                                          x_values) 
             else:
                 sd_gaussian_this_step = np.mean(gaussians_sd, axis=0)
 
         elif args.match_with_sd == 2: # select a different SD subject for each TTA iteration
-            if args.KDE == 1:
+            if args.KDE == 1:                
                 sd_pdf_this_step = pdfs_sd[np.random.randint(pdfs_sd.shape[0]), :, :]
+                x_indices_lebesgue_this_step = utils_kde.sample_sd_points(sd_pdf_this_step,
+                                                                          num_pts_lebesgue,
+                                                                          x_values) 
             else:
                 sd_gaussian_this_step = gaussians_sd[np.random.randint(gaussians_sd.shape[0]), :, :]
                         
@@ -518,7 +531,8 @@ with tf.Graph().as_default():
                            sd_pdf_pl: sd_pdf_this_step, 
                            x_pdf_pl: x_values, 
                            alpha_pl: alpha,
-                           lr_pl: tta_learning_rate}
+                           lr_pl: tta_learning_rate,
+                           x_indices_lebesgue_pl: x_indices_lebesgue_this_step}
 
             elif args.KDE == 0:      
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
