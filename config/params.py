@@ -155,10 +155,14 @@ def make_tta_exp_name(args):
     elif args.KDE == 0:
         exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
     exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2
+    if args.BINARY == 1:
+        exp_str = exp_str + '/BINARY_TERM'
     exp_str = exp_str + '/Vars' + args.tta_vars 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
     exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
+    if args.use_logits_for_TTA == 1:
+        exp_str = exp_str + '_logits' + str(args.use_logits_for_TTA) # If logits are used for feature matching or not
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule

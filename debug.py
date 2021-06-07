@@ -95,17 +95,17 @@ tta_vis_freq = dataset_params[8]
 # ==================================================================
 # Plotting SD KDEs
 # ==================================================================
-expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'models/'
-b_size = 2
-alpha = 10.0
-res = 0.1
-x_min = -3.0
-x_max = 3.0
-pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
-x_values = np.arange(x_min, x_max + res, res)
-sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
-sd_pdfs = np.load(sd_pdfs_filename)
+# expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+# path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'models/'
+# b_size = 2
+# alpha = 10.0
+# res = 0.1
+# x_min = -3.0
+# x_max = 3.0
+# pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
+# x_values = np.arange(x_min, x_max + res, res)
+# sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
+# sd_pdfs = np.load(sd_pdfs_filename)
     
 # # for delta in [0, 32, 96, 224, 480, 608, 672]:                
 # #     for c in range(5):
@@ -118,11 +118,11 @@ sd_pdfs = np.load(sd_pdfs_filename)
 # ==================================================================
 # Inverse Transform Sampling
 # ==================================================================
-s=0
-c=0
-delta=0
-x_values = np.arange(x_min, x_max + res, res)
-sd_pdfs_one_subject = sd_pdfs[s,:,:]
+# s=0
+# c=0
+# delta=0
+# x_values = np.arange(x_min, x_max + res, res)
+# sd_pdfs_one_subject = sd_pdfs[s,:,:]
 # sd_cdfs_one_subject = np.cumsum(sd_pdfs_one_subject, 1)
 # sd_cdfs_one_subject = sd_cdfs_one_subject / np.tile(np.max(sd_cdfs_one_subject, 1), (sd_pdfs_one_subject.shape[1], 1)).T
 # # interpolate each channel separately
@@ -154,17 +154,17 @@ sd_pdfs_one_subject = sd_pdfs[s,:,:]
 #         plt.savefig(path_to_model + 'sd_pdf_samples_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
 #         plt.close()
 
-sample_indices = utils_kde.sample_sd_points(sd_pdfs_one_subject, 50, x_values)
-for delta in [0, 672]:                
-    for c in range(3):
-        sd_pdfs_one_subject_one_channel = sd_pdfs_one_subject[c+delta,:]
-        sd_pdfs_one_subject_one_channel = sd_pdfs_one_subject_one_channel / np.sum(sd_pdfs_one_subject_one_channel)
+# sample_indices = utils_kde.sample_sd_points(sd_pdfs_one_subject, 50, x_values)
+# for delta in [0, 672]:                
+#     for c in range(3):
+#         sd_pdfs_one_subject_one_channel = sd_pdfs_one_subject[c+delta,:]
+#         sd_pdfs_one_subject_one_channel = sd_pdfs_one_subject_one_channel / np.sum(sd_pdfs_one_subject_one_channel)
         
-        plt.figure(figsize=[5,5])
-        plt.plot(x_values, sd_pdfs_one_subject[c+delta,:])
-        plt.scatter(x_values[sample_indices[c+delta,:,1]], np.zeros_like(sample_indices[c+delta,:,1]),s=2)
-        plt.savefig(path_to_model + 'sd_pdf_samples_v2_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
-        plt.close()
+#         plt.figure(figsize=[5,5])
+#         plt.plot(x_values, sd_pdfs_one_subject[c+delta,:])
+#         plt.scatter(x_values[sample_indices[c+delta,:,1]], np.zeros_like(sample_indices[c+delta,:,1]),s=2)
+#         plt.savefig(path_to_model + 'sd_pdf_samples_v2_' + pdf_str + '_sub' + str(s) + '_c' + str(c+delta) + '.png')
+#         plt.close()
 
 
 # ================================================================
@@ -181,3 +181,32 @@ for delta in [0, 672]:
 
 #     print(sd_pdf_pl)
 #     print(tf.gather_nd(sd_pdf_pl, x_indices_lebesgue_pl))
+
+# ================================================================
+# print op names
+# ================================================================
+with tf.Graph().as_default():
+    
+    # ================================================================
+    # create placeholders
+    # ================================================================
+    images_pl = tf.placeholder(tf.float32, shape = [16] + list(image_size) + [1], name = 'images')
+    training_pl = tf.constant(False, dtype=tf.bool)
+    # ================================================================
+    # insert a normalization module in front of the segmentation network
+    # the normalization module is trained for each test image
+    # ================================================================
+    images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = training_pl)
+    # ================================================================
+    # build the graph that computes predictions from the inference model
+    # ================================================================
+    logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
+
+    for conv_block in [1,2,3,4,5,6,7]:
+        for conv_sub_block in [1,2]:
+            conv_string = str(conv_block) + '_' + str(conv_sub_block)
+            features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
+            print(features_td)
+
+    features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
+    print(features_td)

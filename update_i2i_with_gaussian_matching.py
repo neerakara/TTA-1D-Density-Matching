@@ -24,26 +24,29 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
+parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "CALTECH") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 # Whether to compute KDE or not?
-parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
+parser.add_argument('--KDE', type = int, default = 0) # 0 to 1
 parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "Gaussian_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# MRF settings
+parser.add_argument('--BINARY', default = 1) # 1 / 0
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
-parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
+parser.add_argument('--use_logits_for_TTA', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
@@ -160,7 +163,7 @@ with tf.Graph().as_default():
         images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
     else:
         # If SD stats have not been computed so far, run once with b_size set to b_size_compute_sd_gaussians
-        images_pl = tf.placeholder(tf.float32, shape = [args.b_size] + list(image_size) + [1], name = 'images')
+        images_pl = tf.placeholder(tf.float32, shape = [None] + list(image_size) + [1], name = 'images')
     training_pl = tf.constant(False, dtype=tf.bool)
     # ================================================================
     # insert a normalization module in front of the segmentation network
@@ -222,6 +225,15 @@ with tf.Graph().as_default():
                 td_means = tf.concat([td_means, this_layer_means], 0)
                 td_variances = tf.concat([td_variances, this_layer_variances], 0)
 
+        # Also add logits to the features where priors are computed
+        if args.use_logits_for_TTA == 1:
+            features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
+            this_layer_means, this_layer_variances = utils_kde.compute_feature_first_two_moments(features,
+                                                                                                 args.feature_subsampling_factor,
+                                                                                                 args.features_randomized)
+            td_means = tf.concat([td_means, this_layer_means], 0)
+            td_variances = tf.concat([td_variances, this_layer_variances], 0)
+
         # Remove the 'dummy' first entry
         td_mu = td_means[1:]
         td_var = td_variances[1:]
@@ -271,6 +283,16 @@ with tf.Graph().as_default():
                                                                            alpha_pl)
                 
                 td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
+
+        # Also add logits to the features where priors are computed
+        if args.use_logits_for_TTA == 1:
+            features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
+            channel_pdf_this_layer_td = utils_kde.compute_feature_kdes(features_td,
+                                                                       args.feature_subsampling_factor,
+                                                                       args.features_randomized,
+                                                                       x_pdf_pl,
+                                                                       alpha_pl)
+            td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
         
         # Ignore the zeroth column that was added at the start of the loop
         td_pdfs = td_pdfs[1:, :]
@@ -363,6 +385,10 @@ with tf.Graph().as_default():
     # ==============================================================================    
     display_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_pl')
     images_summary = tf.summary.image('display', display_pl)
+    display_features_sd_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_features_sd_pl')
+    display_features_sd_summary = tf.summary.image('display_features_sd', display_features_sd_pl)
+    display_features_td_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_features_td_pl')
+    display_features_td_summary = tf.summary.image('display_features_td', display_features_td_pl)
     display_pdfs_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_pdfs_pl')
     pdfs_summary = tf.summary.image('PDFs', display_pdfs_pl)
     display_cfs_abs_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_cfs_abs_pl')
@@ -406,6 +432,8 @@ with tf.Graph().as_default():
         x_min = -3.0
         x_max = 3.0
         pdf_str = 'alpha' + str(alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size_compute_sd_pdfs)
+        if args.use_logits_for_TTA == 1:
+            pdf_str = pdf_str + '_incl_logits'
         x_values = np.arange(x_min, x_max + res, res)
         sd_pdfs_filename = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
         
@@ -433,10 +461,15 @@ with tf.Graph().as_default():
     # ================================================================
     elif args.KDE == 0:
         
+        sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise'
+
         if b_size_compute_sd_gaussians != 0:
-            sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise' + '_bsize' + str(b_size_compute_sd_gaussians) + '.npy'
-        else:
-            sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise.npy'
+            sd_gaussians_filename = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise' + '_bsize' + str(b_size_compute_sd_gaussians)
+
+        if args.use_logits_for_TTA == 1:
+            sd_gaussians_filename = sd_gaussians_filename + '_incl_logits'    
+
+        sd_gaussians_filename = sd_gaussians_filename + '.npy'
         
         if os.path.isfile(sd_gaussians_filename):            
             gaussians_sd = np.load(sd_gaussians_filename) # [num_subjects, num_channels, 2]
@@ -620,7 +653,7 @@ with tf.Graph().as_default():
         # ===========================   
         # visualize 
         # ===========================
-        if (step+1) % tta_vis_freq == 0:
+        if step % tta_vis_freq == 0:
             utils_vis.write_image_summaries(step,
                                             summary_writer,
                                             sess,
@@ -631,17 +664,75 @@ with tf.Graph().as_default():
                                             label_predicted,
                                             test_image_gt)
 
+            display_features = 1
+            if display_features == 1:
+
+                # get Test image featuers
+                tmp = test_image.shape[0] // 2 - b_size//2
+                features_for_display_td = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
+                                                   feed_dict={images_pl: np.expand_dims(test_image[tmp:tmp+b_size, ...], axis=-1)})
+
+                # get SD image featuers
+                train_sub_num = np.random.randint(orig_data_siz_z_train.shape[0])
+                if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+                    sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+                else:
+                    sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+                tmp = sd_image.shape[0] // 2 - b_size//2
+                features_for_display_sd = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
+                                                   feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
+                
+                utils_vis.write_feature_summaries(step,
+                                                  summary_writer,
+                                                  sess,
+                                                  display_features_sd_summary,
+                                                  display_features_sd_pl,
+                                                  features_for_display_sd,
+                                                  display_features_td_summary,
+                                                  display_features_td_pl,
+                                                  features_for_display_td)
+
             # ===========================
             # visualize feature distribution alignment
             # ===========================
-            if args.KDE == 1:
+            if args.KDE == 0:
+
+                b_size = args.b_size
+                num_batches = 0
+                for b_i in range(0, test_image.shape[0], b_size):
+                    if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
+                        b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)})
+                        if b_i == 0:
+                            test_mu = b_mu
+                            test_var = b_var
+                        else:
+                            test_mu = test_mu + b_mu
+                            test_var = test_var + b_var
+                        num_batches = num_batches + 1
+                test_mu = test_mu / num_batches
+                test_var = test_var / num_batches
+
+                utils_vis.write_gaussians(step,
+                                          summary_writer,
+                                          sess,
+                                          pdfs_summary,
+                                          display_pdfs_pl,
+                                          np.mean(gaussians_sd, axis=0)[:,0],
+                                          np.mean(gaussians_sd, axis=0)[:,1],
+                                          test_mu,
+                                          test_var,
+                                          log_dir_tta,
+                                          args.use_logits_for_TTA,
+                                          nlabels)
+
+            elif args.KDE == 1:
                 b_size = args.b_size
                 num_batches = 0
                 for b_i in range(0, test_image.shape[0], b_size):
                     if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
                         pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                        x_pdf_pl: x_values,
-                                                                        alpha_pl: alpha})
+                                                                       x_pdf_pl: x_values,
+                                                                       alpha_pl: alpha})
                         if b_i == 0:
                             pdfs_td_this_step = pdfs_this_batch
                         else:

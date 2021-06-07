@@ -226,6 +226,35 @@ def plot_graph(a, b, save_path):
 
 # ================================================================
 # ================================================================
+def write_feature_summaries(step,
+                            summary_writer,
+                            sess,
+                            summary_features_sd,
+                            display_sd_pl,
+                            features_sd,
+                            summary_features_td,
+                            display_td_pl,
+                            features_td):
+
+    summary_writer.add_summary(sess.run(summary_features_sd, feed_dict = {display_sd_pl: prepare_for_tensorboard(stitch_features(features_sd))}), step)
+    summary_writer.add_summary(sess.run(summary_features_td, feed_dict = {display_td_pl: prepare_for_tensorboard(stitch_features(features_td))}), step)
+
+# ================================================================
+# function to stitch all features of a particular iteration together
+# ================================================================
+def stitch_features(f): # shape of f --> [b_size, nx, ny, n_channels]
+        
+    nb, nx, ny, nc = f.shape
+    stitched_feat = np.zeros((nx, nc*ny), dtype = np.float32)
+
+    for c in range(nc):
+        sy = c
+        stitched_feat[:, sy*ny:(sy+1)*ny] = f[nb//2, :, :, c]
+    
+    return stitched_feat
+
+# ================================================================
+# ================================================================
 def write_image_summaries(step,
                           summary_writer,
                           sess,
@@ -282,19 +311,21 @@ def prepare_for_tensorboard(x):
 
 # ================================================================
 # ================================================================
-def write_histogram_summaries(step,
-                              summary_writer,
-                              sess,
-                              summary_histograms,
-                              display_pl,
-                              sd_mu,
-                              sd_var,
-                              td_mu,
-                              td_var,
-                              savedir):
+def write_gaussians(step,
+                    summary_writer,
+                    sess,
+                    summary_histograms,
+                    display_pl,
+                    sd_mu,
+                    sd_var,
+                    td_mu,
+                    td_var,
+                    savedir,
+                    logits_present,
+                    nlabels):
 
     # stitch images
-    stitched_image = stitch_histograms(sd_mu, sd_var, td_mu, td_var, savedir)
+    stitched_image = stitch_gaussians(sd_mu, sd_var, td_mu, td_var, savedir, logits_present, nlabels)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -305,13 +336,23 @@ def write_histogram_summaries(step,
 # ================================================================
 # function to stitch all images of a particular iteration together
 # ================================================================
-def stitch_histograms(sd_means, sd_variances, td_means, td_variances, savedir):
+def stitch_gaussians(sd_means,
+                     sd_variances,
+                     td_means,
+                     td_variances,
+                     savedir,
+                     logits_present,
+                     nlabels):
         
     nx = 150
     ny = 150
 
-    # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
-    stitched_image = np.zeros((5*nx, 7*ny), dtype = np.float32)
+    if logits_present == 0:
+        # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
+        stitched_image = np.zeros((5*nx, 7*ny), dtype = np.float32)
+    else:
+        # show logit distributions as well
+        stitched_image = np.zeros((5*nx, 8*ny), dtype = np.float32)
 
     sy = 0
     for delta in [0, 32, 96, 224, 480, 608, 672]:                
@@ -320,11 +361,23 @@ def stitch_histograms(sd_means, sd_variances, td_means, td_variances, savedir):
             stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, delta+c, savedir)
         sy = sy+1
 
+    if logits_present == 1:
+        delta = 704
+        for c in range(nlabels):
+            if c < 5:
+                sx = c
+                stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, delta+c, savedir)
+
     return stitched_image
 
 # ================================================================
 # ================================================================
-def save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, c, savedir):
+def save_tmp_and_load(sd_means,
+                      sd_variances,
+                      td_means,
+                      td_variances,
+                      c,
+                      savedir):
     
     plt.figure(figsize=[1.5,1.5])
     x = np.linspace(sd_means[c] - 3*np.sqrt(sd_variances[c]), sd_means[c] + 3*np.sqrt(sd_variances[c]), 20)
