@@ -22,23 +22,29 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "HCPT1") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "CALTECH") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "STANFORD") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 # Whether to compute KDE or not?
-parser.add_argument('--KDE', type = int, default = 0) # 0 to 1
+parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
 parser.add_argument('--alpha', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
-parser.add_argument('--match_moments', default = "Gaussian_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# MRF settings
+parser.add_argument('--BINARY', default = 1) # 1 / 0
+parser.add_argument('--POTENTIAL_TYPE', type = int, default = 2) # 1 / 2
+parser.add_argument('--BINARY_LAMBDA', type = float, default = 0.1) # 1.0
+parser.add_argument('--BINARY_ALPHA', type = float, default = 1.0) # 1.0 / 10.0 (smoothness paramter for the KDE of the binary potentials)
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
-parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
+parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--use_logits_for_TTA', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
@@ -62,9 +68,6 @@ target_resolution = dataset_params[2]
 image_depth_tr = dataset_params[3]
 image_depth_ts = dataset_params[4]
 whole_gland_results = dataset_params[5]
-tta_max_steps = dataset_params[6]
-tta_model_saving_freq = dataset_params[7]
-tta_vis_freq = dataset_params[8]
 
 # ================================================================
 # Make the name for this TTA run
@@ -301,7 +304,7 @@ def main():
     dice_per_label_per_subject = []
     hsd_per_label_per_subject = []
 
-    for sub_num in range(10):#(num_test_subjects):
+    for sub_num in range(10): #(num_test_subjects):
 
         subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
         subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])

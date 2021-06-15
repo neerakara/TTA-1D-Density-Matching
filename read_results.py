@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
@@ -29,10 +29,16 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+# MRF settings
+parser.add_argument('--BINARY', default = 1) # 1 / 0
+parser.add_argument('--POTENTIAL_TYPE', type = int, default = 3) # 1 / 2
+parser.add_argument('--BINARY_LAMBDA', type = float, default = 0.1) # 1.0
+parser.add_argument('--BINARY_ALPHA', type = float, default = 1.0) # 1.0 / 10.0 (smoothness paramter for the KDE of the binary potentials)
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 8) # 1 / 4
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--use_logits_for_TTA', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings

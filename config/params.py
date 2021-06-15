@@ -95,7 +95,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         # =================================
         tta_max_steps = 251 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
-        tta_vis_freq = 25 
+        tta_vis_freq = 1 
 
         # =================================
         # =================================
@@ -126,7 +126,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         # =================================
         tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 250
-        tta_vis_freq = 50
+        tta_vis_freq = 1
 
         # =================================
         # =================================
@@ -156,7 +156,10 @@ def make_tta_exp_name(args):
         exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
     exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2
     if args.BINARY == 1:
-        exp_str = exp_str + '/BINARY_TERM'
+        if args.KDE == 0:
+            exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
+        elif args.KDE == 1:
+            exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_ALPHA_' + str(args.BINARY_ALPHA) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
     exp_str = exp_str + '/Vars' + args.tta_vars 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
@@ -165,9 +168,49 @@ def make_tta_exp_name(args):
         exp_str = exp_str + '_logits' + str(args.use_logits_for_TTA) # If logits are used for feature matching or not
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
-    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch)  + '_debug'# TTA LR schedule
     if args.tta_init_from_scratch == 1:
         exp_str = exp_str + '/Reinit_before_TTA'
     exp_str = exp_str + '/'
 
     return exp_str
+
+# ================================================================
+# Function to make the name for the file containing SD Gaussian parameters
+# ================================================================
+def make_sd_gaussian_names(path_to_model, b_size, args):
+
+    fname = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise'
+
+    if b_size != 0:
+        fname = fname + '_bsize' + str(b_size)
+
+    if args.use_logits_for_TTA == 1:
+        fname = fname + '_incl_logits'    
+
+    sd_gaussians_filename = fname + '.npy' 
+    sd_grad_gaussians_filename = fname + '_pot' + str(args.POTENTIAL_TYPE) + '.npy' 
+
+    return sd_gaussians_filename, sd_grad_gaussians_filename
+
+# ================================================================
+# Function to make the name for the file containing SD KDE parameters
+# ================================================================
+def make_sd_pdf_name(path_to_model, b_size, args, x_min, x_max, res, potential_type):
+
+    if potential_type == 'unary':
+        pdf_str = 'alpha' + str(args.alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
+    elif potential_type == 'binary':
+        pdf_str = 'alpha' + str(args.BINARY_ALPHA) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
+    
+    if args.use_logits_for_TTA == 1:
+        pdf_str = pdf_str + '_incl_logits'
+    
+    fname = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise'
+
+    if potential_type == 'unary':
+        sd_pdfs_fname = fname + '.npy'
+    elif potential_type == 'binary':
+        sd_pdfs_fname = fname + '_pot' + str(args.POTENTIAL_TYPE) + '.npy' 
+
+    return sd_pdfs_fname

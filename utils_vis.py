@@ -399,10 +399,18 @@ def write_pdfs(step,
                pdfs_SD_std,
                pdfs_TD,
                x,
-               savedir):
+               savedir,
+               deltas = [0, 32, 96, 224, 480, 608, 672],
+               num_channels = 5):
 
     # stitch images
-    stitched_image = stitch_pdfs(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, savedir)
+    stitched_image = stitch_pdfs(pdfs_SD_mu,
+                                 pdfs_SD_std,
+                                 pdfs_TD,
+                                 x,
+                                 savedir,
+                                 deltas,
+                                 num_channels)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -413,17 +421,23 @@ def write_pdfs(step,
 # ================================================================
 # function to stitch all images of a particular iteration together
 # ================================================================
-def stitch_pdfs(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, savedir):
+def stitch_pdfs(pdfs_SD_mu,
+                pdfs_SD_std,
+                pdfs_TD,
+                x,
+                savedir,
+                deltas,
+                num_channels):
         
     nx = 150
     ny = 150
 
     # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
-    stitched_image = np.zeros((5*nx, 7*ny), dtype = np.float32)
+    stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
 
     sy = 0
-    for delta in [0, 32, 96, 224, 480, 608, 672]:                
-        for c in range(5):
+    for delta in deltas:
+        for c in range(num_channels):
             sx = c
             stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, delta+c, savedir)
         sy = sy+1

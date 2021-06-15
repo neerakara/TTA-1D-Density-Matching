@@ -1,12 +1,13 @@
+import os
 import numpy as np
 import tensorflow as tf
 import logging
 
 # ==============================================
 # ==============================================
-def compute_feature_first_two_moments(features,
-                                      feature_subsampling_factor,
-                                      features_randomized):
+def compute_first_two_moments(features,
+                              feature_subsampling_factor,
+                              features_randomized):
 
     # Reshape to bring all those axes together where you want to take moments across
     features = tf.reshape(features, (-1, features.shape[-1]))
@@ -28,6 +29,24 @@ def compute_feature_first_two_moments(features,
 
     # Return first two moments of the computed features
     return tf.nn.moments(features, axes = [0])
+
+# ==============================================
+# ==============================================
+def compute_pairwise_potentials(features, potential_type):
+    
+    features_sobel_edges = tf.image.sobel_edges(features)
+
+    if potential_type == 1: # GRADIENT L2 Norm SQUARED
+        pairwise_potentials = tf.reduce_sum(tf.math.square(features_sobel_edges), axis=-1)
+
+    if potential_type == 2: # GRADIENT L2 Norm 
+        # having some numerical issue if the small number is not added before taking the square root
+        pairwise_potentials = tf.math.sqrt(tf.reduce_sum(tf.math.square(features_sobel_edges), axis=-1) + 1e-5)
+
+    if potential_type == 3: # GRADIENT L1 Norm
+        pairwise_potentials = tf.reduce_sum(tf.math.abs(features_sobel_edges), axis=-1)
+
+    return pairwise_potentials
 
 # ==============================================
 # ==============================================
@@ -154,7 +173,8 @@ def compute_kde_losses(sd_pdfs,
 
 # ==================================
 # ==================================
-def compute_sd_pdfs(train_dataset,
+def compute_sd_pdfs(filename,
+                    train_dataset,
                     imtr,
                     image_depth_tr,
                     orig_data_siz_z_train,
@@ -167,36 +187,43 @@ def compute_sd_pdfs(train_dataset,
                     alpha_pl,
                     alpha):
 
-    pdfs_sd = []           
+    if os.path.isfile(filename):            
+        pdfs_sd = np.load(filename) # [num_subjects, num_channels, 2]
 
-    for train_sub_num in range(orig_data_siz_z_train.shape[0]):
+    else:
+        pdfs_sd = []
+        for train_sub_num in range(orig_data_siz_z_train.shape[0]):
+            logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
+            if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+                sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+            else:
+                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+            logging.info(sd_image.shape)
+            
+            num_batches = 0
+            for b_i in range(0, sd_image.shape[0], b_size):
+                if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
+                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
+                                                                   x_pdf_pl: x_values,
+                                                                   alpha_pl: alpha})
+                    if b_i == 0:
+                        pdfs_this_subject = pdfs_this_batch
+                    else:
+                        pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
+                    num_batches = num_batches + 1
+            pdfs_this_subject = pdfs_this_subject / num_batches
+            pdfs_sd.append(pdfs_this_subject)
         
-        logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
-        if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-            sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
-        else:
-            sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-        logging.info(sd_image.shape)
-        
-        num_batches = 0
-        for b_i in range(0, sd_image.shape[0], b_size):
-            if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
-                                                               x_pdf_pl: x_values,
-                                                               alpha_pl: alpha})
-                if b_i == 0:
-                    pdfs_this_subject = pdfs_this_batch
-                else:
-                    pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
-                num_batches = num_batches + 1
-        pdfs_this_subject = pdfs_this_subject / num_batches
-        pdfs_sd.append(pdfs_this_subject)
+        pdfs_sd = np.array(pdfs_sd)
+        # save
+        np.save(filename, pdfs_sd)
 
-    return np.array(pdfs_sd)
+    return pdfs_sd
 
 # ==================================
 # ==================================
-def compute_sd_gaussians(train_dataset,
+def compute_sd_gaussians(filename,
+                         train_dataset,
                          imtr,
                          image_depth_tr,
                          orig_data_siz_z_train,
@@ -206,41 +233,49 @@ def compute_sd_gaussians(train_dataset,
                          td_var,
                          images_pl):
 
-    gaussians_sd = []            
+    if os.path.isfile(filename):            
+        gaussians_sd = np.load(filename) # [num_subjects, num_channels, 2]
 
-    for train_sub_num in range(orig_data_siz_z_train.shape[0]):
-        
-        logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
-        if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-            sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
-        else:
-            sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-        logging.info(sd_image.shape)
-        
-        # =========================
-        # Do batchwise computations
-        # =========================
-        if b_size != 0:
-            num_batches = 0
-            for b_i in range(0, sd_image.shape[0], b_size):
-                if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
-                    b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1)})
-                    if b_i == 0:
-                        s_mu = b_mu
-                        s_var = b_var
-                    else:
-                        s_mu = s_mu + b_mu
-                        s_var = s_var + b_var
-                    num_batches = num_batches + 1
-            s_mu = s_mu / num_batches
-            s_var = s_var / num_batches
-        # =========================
-        # Use full images to compute stats
-        # =========================
-        elif b_size == 0:
-            s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
+    else:
+        gaussians_sd = []            
 
-        # Append to list
-        gaussians_sd.append(np.stack((s_mu, s_var), 1),)
+        for train_sub_num in range(orig_data_siz_z_train.shape[0]):
+            
+            logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
+            if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+                sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+            else:
+                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
+            logging.info(sd_image.shape)
+            
+            # =========================
+            # Do batchwise computations
+            # =========================
+            if b_size != 0:
+                num_batches = 0
+                for b_i in range(0, sd_image.shape[0], b_size):
+                    if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
+                        b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1)})
+                        if b_i == 0:
+                            s_mu = b_mu
+                            s_var = b_var
+                        else:
+                            s_mu = s_mu + b_mu
+                            s_var = s_var + b_var
+                        num_batches = num_batches + 1
+                s_mu = s_mu / num_batches
+                s_var = s_var / num_batches
+            # =========================
+            # Use full images to compute stats
+            # =========================
+            elif b_size == 0:
+                s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
 
-    return np.array(gaussians_sd)
+            # Append to list
+            gaussians_sd.append(np.stack((s_mu, s_var), 1))
+
+        gaussians_sd = np.array(gaussians_sd)
+        # save
+        np.save(filename, gaussians_sd)
+
+    return gaussians_sd
