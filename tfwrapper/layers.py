@@ -92,12 +92,13 @@ def conv2D_layer(x,
                  kernel_size=3,
                  num_filters=32,
                  strides=1,
-                 padding="SAME"):
+                 padding="same"):
 
     conv = tf.layers.conv2d(inputs=x,
                             filters=num_filters,
                             kernel_size=kernel_size,
                             padding=padding,
+                            strides=strides,
                             name=name,
                             use_bias=False)    
     

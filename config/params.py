@@ -95,7 +95,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         # =================================
         tta_max_steps = 251 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
-        tta_vis_freq = 1 
+        tta_vis_freq = 10
 
         # =================================
         # =================================
@@ -126,7 +126,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         # =================================
         tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 250
-        tta_vis_freq = 1
+        tta_vis_freq = 10
 
         # =================================
         # =================================
@@ -160,6 +160,12 @@ def make_tta_exp_name(args):
             exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
         elif args.KDE == 1:
             exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_ALPHA_' + str(args.BINARY_ALPHA) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
+    elif args.RANDOM_FEATURES == 1:
+        exp_str = exp_str + '/RANDOM_FEATURES/NUM' + str(args.NUM_RANDOM_FEATURES) + '_PATCHsize' + str(args.PATCH_SIZE)
+        if args.KDE == 0:
+            exp_str = exp_str + '_COV_' + args.RANDOM_FEATURES_GAUSSIAN_COV
+        elif args.KDE == 1:
+            exp_str = exp_str + '_ALPHA_' + str(args.RANDOM_FEATURES_KDE_ALPHA)
     exp_str = exp_str + '/Vars' + args.tta_vars 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
@@ -168,7 +174,7 @@ def make_tta_exp_name(args):
         exp_str = exp_str + '_logits' + str(args.use_logits_for_TTA) # If logits are used for feature matching or not
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
-    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch)  + '_debug'# TTA LR schedule
+    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
     if args.tta_init_from_scratch == 1:
         exp_str = exp_str + '/Reinit_before_TTA'
     exp_str = exp_str + '/'
@@ -192,6 +198,22 @@ def make_sd_gaussian_names(path_to_model, b_size, args):
     sd_grad_gaussians_filename = fname + '_pot' + str(args.POTENTIAL_TYPE) + '.npy' 
 
     return sd_gaussians_filename, sd_grad_gaussians_filename
+
+# ================================================================
+# Function to make the name for the file containing SD Gaussian parameters
+# ================================================================
+def make_sd_RP_gaussian_names(path_to_model,
+                              b_size,
+                              args):
+
+    fname = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise'
+
+    if b_size != 0:
+        fname = fname + '_bsize' + str(b_size)
+
+    fname = fname + '_RP_psize' + str(args.PATCH_SIZE) + '_numproj' + str(args.NUM_RANDOM_FEATURES) + '.npy' 
+
+    return fname
 
 # ================================================================
 # Function to make the name for the file containing SD KDE parameters

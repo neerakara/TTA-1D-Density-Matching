@@ -692,6 +692,65 @@ def load_testing_data(test_dataset,
         ids = np.arange(idx_start, idx_end)
 
     # ================================================================
+    # NCI
+    # ================================================================
+    elif test_dataset == 'NCI':
+    
+        logging.info('Reading NCI images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
+    
+        data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
+                                                         preprocessing_folder = sys_config.preproc_folder_nci,
+                                                         size = image_size,
+                                                         target_resolution = target_resolution,
+                                                         force_overwrite = False,
+                                                         cv_fold_num = 1)
+        
+        imts = data_pros['images_test']
+        gtts = data_pros['masks_test']
+        orig_data_res_x = data_pros['px_test'][:]
+        orig_data_res_y = data_pros['py_test'][:]
+        orig_data_res_z = data_pros['pz_test'][:]
+        orig_data_siz_x = data_pros['nx_test'][:]
+        orig_data_siz_y = data_pros['ny_test'][:]
+        orig_data_siz_z = data_pros['nz_test'][:]
+        name_test_subjects = data_pros['patnames_test']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+        ids = np.arange(num_test_subjects)
+
+    # ================================================================
+    # HCP T1
+    # ================================================================
+    elif test_dataset == 'HCPT1':
+
+        logging.info('Reading HCPT1 images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+
+        idx_start = 50
+        idx_end = 70
+        
+        data_brain = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                        preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                        idx_start = idx_start,
+                                                        idx_end = idx_end,           
+                                                        protocol = 'T1',
+                                                        size = image_size,
+                                                        depth = image_depth,
+                                                        target_resolution = target_resolution)
+
+        imts = data_brain['images']
+        gtts = data_brain['labels']
+        orig_data_res_x = data_brain['px'][:]
+        orig_data_res_y = data_brain['py'][:]
+        orig_data_res_z = data_brain['pz'][:]
+        orig_data_siz_x = data_brain['nx'][:]
+        orig_data_siz_y = data_brain['ny'][:]
+        orig_data_siz_z = data_brain['nz'][:]
+        name_test_subjects = data_brain['patnames']
+        num_test_subjects = imts.shape[0] // image_depth
+        ids = np.arange(idx_start, idx_end)
+
+    # ================================================================
     # HCP T2
     # ================================================================
     elif test_dataset == 'HCPT2':

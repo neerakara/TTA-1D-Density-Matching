@@ -28,7 +28,8 @@ def save_single_image(image,
                       add_pixel_each_label=True,
                       cmap='tab20',
                       colorbar=False,
-                      climits = []):
+                      climits = [],
+                      dpi = 100):
         
     plt.figure(figsize=[20,20])            
     
@@ -41,7 +42,7 @@ def save_single_image(image,
     plt.axis('off')
     if colorbar:
         plt.colorbar()
-    plt.savefig(savepath, bbox_inches='tight', dpi=50)
+    plt.savefig(savepath, bbox_inches='tight', dpi=dpi)
     plt.close()
 
 # ==========================================================
@@ -322,10 +323,20 @@ def write_gaussians(step,
                     td_var,
                     savedir,
                     logits_present,
-                    nlabels):
+                    nlabels,
+                    deltas = [0, 32, 96, 224, 480, 608, 672],
+                    num_channels = 5):
 
     # stitch images
-    stitched_image = stitch_gaussians(sd_mu, sd_var, td_mu, td_var, savedir, logits_present, nlabels)
+    stitched_image = stitch_gaussians(sd_mu,
+                                      sd_var,
+                                      td_mu,
+                                      td_var,
+                                      savedir,
+                                      logits_present,
+                                      nlabels,
+                                      deltas,
+                                      num_channels)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -342,23 +353,30 @@ def stitch_gaussians(sd_means,
                      td_variances,
                      savedir,
                      logits_present,
-                     nlabels):
+                     nlabels,
+                     deltas,
+                     num_channels):
         
     nx = 150
     ny = 150
 
     if logits_present == 0:
         # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
-        stitched_image = np.zeros((5*nx, 7*ny), dtype = np.float32)
+        stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
     else:
         # show logit distributions as well
-        stitched_image = np.zeros((5*nx, 8*ny), dtype = np.float32)
+        stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
 
     sy = 0
-    for delta in [0, 32, 96, 224, 480, 608, 672]:                
-        for c in range(5):
+    for delta in deltas:                
+        for c in range(num_channels):
             sx = c
-            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, delta+c, savedir)
+            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means,
+                                                                                 sd_variances,
+                                                                                 td_means,
+                                                                                 td_variances,
+                                                                                 delta+c,
+                                                                                 savedir)
         sy = sy+1
 
     if logits_present == 1:
@@ -366,7 +384,12 @@ def stitch_gaussians(sd_means,
         for c in range(nlabels):
             if c < 5:
                 sx = c
-                stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means, sd_variances, td_means, td_variances, delta+c, savedir)
+                stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means,
+                                                                                     sd_variances,
+                                                                                     td_means,
+                                                                                     td_variances,
+                                                                                     delta+c,
+                                                                                     savedir)
 
     return stitched_image
 

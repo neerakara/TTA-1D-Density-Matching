@@ -7,7 +7,8 @@ import logging
 # ==============================================
 def compute_first_two_moments(features,
                               feature_subsampling_factor,
-                              features_randomized):
+                              features_randomized,
+                              cov = 'DIAG'):
 
     # Reshape to bring all those axes together where you want to take moments across
     features = tf.reshape(features, (-1, features.shape[-1]))
@@ -27,8 +28,19 @@ def compute_first_two_moments(features,
                                                dtype=tf.int32)
             features = tf.gather(features, random_indices, axis=0)
 
-    # Return first two moments of the computed features
-    return tf.nn.moments(features, axes = [0])
+    if cov == 'DIAG':
+        # Return first two moments of the computed features
+        return tf.nn.moments(features, axes = [0])
+    
+    elif cov == 'FULL':
+        means = tf.reduce_mean(features, axis = 0)        
+        # https://stackoverflow.com/questions/47709854/how-to-get-covariance-matrix-in-tensorflow?rq=1
+        means_ = tf.reduce_mean(features, axis=0, keepdims=True)
+        mx = tf.matmul(tf.transpose(means_), means_)
+        vx = tf.matmul(tf.transpose(features), features) / tf.cast(tf.shape(features)[0], tf.float32)
+        covariance = vx - mx
+
+        return means, variance
 
 # ==============================================
 # ==============================================
