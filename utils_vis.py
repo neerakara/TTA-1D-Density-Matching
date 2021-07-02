@@ -9,6 +9,7 @@ import logging
 from scipy.stats import norm
 from skimage import color
 from skimage import io
+import tensorflow as tf
 
 # ==========================================================
 # ==========================================================
@@ -24,9 +25,9 @@ def add_1_pixel_each_class(arr, nlabels=15):
 # ==========================================================
 def save_single_image(image,
                       savepath,
-                      nlabels,
-                      add_pixel_each_label=True,
-                      cmap='tab20',
+                      nlabels=3,
+                      add_pixel_each_label=False,
+                      cmap='gray',
                       colorbar=False,
                       climits = [],
                       dpi = 100):
@@ -541,3 +542,150 @@ def save_tmp_cf_and_load(sd_cfs_, td_cfs_, c, savedir, abs_or_angle):
     plt.close()
 
     return io.imread(savedir + '/tmp.png')[:,:,0]
+
+# ==========================================================
+# ==========================================================       
+def save_patches(patches,
+                 savepath,
+                 ids = [-100, -100],
+                 nc = 5,
+                 nr = 5,
+                 psize = 128):
+    
+    if ids == [-100, -100]:
+        ids = np.random.randint(0, patches.shape[0], nc * nr)
+
+    plt.figure(figsize=[nc*3, nr*3])
+    for c in range(nc):     
+        for r in range(nr): 
+            plt.subplot(nc, nr, nc*c+r+1)
+            plt.imshow(np.reshape(patches[ids[nc*c+r],:], [psize,psize]), cmap='gray')
+            # plt.clim([0,1.1])
+            plt.colorbar()
+            plt.title('Patch ID: ' + str(ids[nc*c+r]))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================       
+def save_features(features,
+                  savepath):
+    
+    nc = 4
+    nr = 4
+
+    plt.figure(figsize=[nc*3, nr*3])
+    for c in range(nc):     
+        for r in range(nr): 
+            plt.subplot(nc, nr, nc*c+r+1)
+            plt.imshow(features[nc*c+r, :, :, 0], cmap='gray')
+            # plt.clim([0, 1.1])
+            plt.colorbar()
+            plt.title('Feature ID: ' + str(nc*c+r))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def plot_scatter_pca_coefs(z_sd,
+                           z_td,
+                           savepath,
+                           nc = 5,
+                           nr = 5):
+
+    plt.figure(figsize=[nc*3, nr*3])
+
+    for c in range(nc):     
+        for r in range(nr): 
+            plt.subplot(nc, nr, nc*c+r+1)
+            plt.scatter(z_sd[:,nc*c+r], np.zeros_like(z_sd[:,nc*c+r]), color=['blue'])
+            plt.scatter(z_td[:,nc*c+r], np.zeros_like(z_td[:,nc*c+r]) + 1, color=['red'])
+            plt.title('component ' + str(nc*c+r+1))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def plot_histograms_pca_coefs(kdes_this_subject,
+                              z_vals,
+                              savepath,
+                              nc = 3,
+                              nr = 3):
+
+    plt.figure(figsize=[nc*3, nr*3])
+
+    for c in range(nc):     
+        for r in range(nr):
+            kde_this_dim = kdes_this_subject[nc*c+r, :]
+            plt.subplot(nc, nr, nc*c+r+1)
+            plt.plot(z_vals, kde_this_dim)
+            plt.title('component ' + str(nc*c+r+1))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def plot_scatter_pca_coefs_pairwise(z,
+                                    savepath,
+                                    nc = 7,
+                                    nr = 7,
+                                    set_limits = False):
+
+    plt.figure(figsize=[nc*3, nr*3])
+
+    for c in range(nc):     
+        for r in range(nr): 
+            if r >= c:
+                plt.subplot(nc, nr, nc*c+r+1)
+                plt.scatter(z[:,c], z[:,r], color=['blue'], marker=',')
+                if set_limits == True:
+                    plt.xlim([-15,15])
+                    plt.ylim([-15,15])
+                plt.title('component ' + str(c) + 'vs' + str(r))
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def visualize_principal_components(pcs,
+                                   savepath,
+                                   psize = 128,
+                                   nc = 5,
+                                   nr = 5):
+
+    plt.figure(figsize=[nc*3, nr*3])
+    for c in range(nc):     
+        for r in range(nr): 
+            plt.subplot(nc, nr, nc*c+r+1)
+            plt.imshow(np.reshape(pcs[nc*c+r, :], [psize, psize]), cmap='gray')
+            plt.colorbar()
+            plt.title('component: ' + str(nc*c+r+1))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def plot_kdes_for_sd_and_td(kdes_td_subject,
+                            kdes_sd_subjects,
+                            z_vals,
+                            savepath,
+                            nc = 3,
+                            nr = 3):
+
+    plt.figure(figsize=[nc*3, nr*3])
+
+    for c in range(nc):     
+        for r in range(nr):
+            plt.subplot(nc, nr, nc*c+r+1)
+            for s in range(kdes_sd_subjects.shape[0]):
+                plt.plot(z_vals, kdes_sd_subjects[s, nc*c+r, :], 'blue')            
+            plt.plot(z_vals, kdes_td_subject[nc*c+r, :], 'red')
+            plt.title('component ' + str(nc*c+r+1))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()

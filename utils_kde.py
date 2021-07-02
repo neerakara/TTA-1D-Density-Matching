@@ -291,3 +291,42 @@ def compute_sd_gaussians(filename,
         np.save(filename, gaussians_sd)
 
     return gaussians_sd
+
+# ==================================
+# ==================================
+def extract_patches(features,
+                    channel = 0,
+                    psize = 64,
+                    stride = 10):
+
+    # features will be of shape: b_size, nx, ny, n_channels
+    # let's treat all channels separately for now.
+    # let's just select one channel for now
+
+    patches = tf.image.extract_image_patches(features[:,:,:,channel:channel+1],
+                                             ksizes = [1, psize, psize, 1],
+                                             strides = [1, stride, stride, 1],
+                                             rates = [1, 1, 1, 1],
+                                             padding = 'VALID')
+
+    patches_reshaped = tf.reshape(patches, [-1, patches.shape[-1]])
+
+    return patches_reshaped
+
+
+# ==================================
+# ==================================
+def compute_pca_latent_kdes(latents, alpha):
+
+    z_min = -20.0
+    z_max = 20.0
+    res = 0.1
+    z_vals = np.arange(z_min, z_max + res, res)
+
+    kdes_this_subject = []
+    for k in range(latents.shape[1]):
+        z_samples = latents[:, k]
+        kde_this_dim = np.mean(np.exp(-alpha * np.square(np.tile(z_vals, [z_samples.shape[0], 1]) - np.tile(z_samples, [z_vals.shape[0], 1]).T)), 0)
+        kdes_this_subject.append(kde_this_dim)
+
+    return np.array(kdes_this_subject), z_vals
