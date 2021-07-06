@@ -45,7 +45,6 @@ parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-parser.add_argument('--use_logits_for_TTA', type = int, default = 0) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
