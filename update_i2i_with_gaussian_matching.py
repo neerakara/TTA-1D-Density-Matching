@@ -31,20 +31,16 @@ parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
-parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
+parser.add_argument('--adaBN', type = int, default = 0) # 0 / 1
 # Whether to compute KDE or not?
-parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
+parser.add_argument('--KDE', type = int, default = 1) # 0 / 1
 parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_Groups', type = int, default = 1) # 0 / 1
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
-# MRF settings
-parser.add_argument('--BINARY', default = 1) # 1 / 0
-parser.add_argument('--POTENTIAL_TYPE', type = int, default = 3) # 1 / 2
-parser.add_argument('--BINARY_LAMBDA', type = float, default = 0.1) # 1.0
-parser.add_argument('--BINARY_ALPHA', type = float, default = 1.0) # 1.0 / 10.0 (smoothness paramter for the KDE of the binary potentials)
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8
@@ -207,8 +203,6 @@ with tf.Graph().as_default():
         # placeholders for SD stats. These will be extracted after loading the SD trained model.
         sd_mu_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_means')
         sd_var_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_variances')
-        sd_pot_mu_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_pot_means') # mean of pairwise potentials
-        sd_pot_var_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_pot_variances') # variance of pairwise potentials
 
         # compute the stats of features of the TD image that is fed via the placeholder
         td_means = tf.zeros([1])
@@ -249,35 +243,15 @@ with tf.Graph().as_default():
         loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_var / sd_var_pl) + (sd_var_pl + (sd_mu_pl - td_mu)**2) / td_var)
 
         # =================================
-        # Compute binary terms 
-        # =================================
-        # last layer. From here, there is a 1x1 conv that gives the logits
-        conv_string = str(7) + '_' + str(2)
-        features_last_layer = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
-        # Compute the first two moments for the spatial gradient magnitude for all channels of this layer
-        pairwise_potentials = utils_kde.compute_pairwise_potentials(features_last_layer,
-                                                                    args.POTENTIAL_TYPE)
-        pot_mu, pot_var = utils_kde.compute_first_two_moments(pairwise_potentials,
-                                                              args.feature_subsampling_factor,
-                                                              args.features_randomized)
-        
-        # KL-divergence between 1D distributions of gradient magnitudes
-        loss_binary_gaussian_kl_op = tf.reduce_mean(tf.math.log(pot_var / sd_pot_var_pl) + (sd_pot_var_pl + (sd_pot_mu_pl - pot_mu)**2) / pot_var)
-
-        # =================================
         # Total loss
         # =================================
-        if args.BINARY == 0:
-            loss_op = loss_gaussian_kl_op # mean over all channels of all layers
-        elif args.BINARY == 1:
-            loss_op = loss_gaussian_kl_op + args.BINARY_LAMBDA * loss_binary_gaussian_kl_op # mean over all channels of all layers
+        loss_op = loss_gaussian_kl_op # mean over all channels of all layers
 
         # ================================================================
         # Add losses to tensorboard
         # ================================================================      
         tf.summary.scalar('loss/TTA', loss_op)         
         tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
-        tf.summary.scalar('loss/Gradients_Gaussian_KL', loss_binary_gaussian_kl_op)
         summary_during_tta = tf.summary.merge_all()
 
     # ================================================================
@@ -285,107 +259,90 @@ with tf.Graph().as_default():
     # ================================================================
     elif args.KDE == 1:
 
+        # =======================================================
+        # DIVIDE CHANNELS into 3 groups:
+            # 1. 0 to 688 (layers 1_2 to 7_1) [range of channel means: [-0.5, 0.5], range of channel variances: [0.25, 2.5]]
+            # 2. 689 to 704 (layer 7_2) [range of channel means: [-0.5, 1.5], range of channel variances: [2.5, 8.0]]
+            # 3. 704 to 704 + n_labels (logits) [range of channel means: [-15, 20], range of channel variances: [15, 100]]
+        # KDEs of channels in groups 2 and 3 need to be computed to an extended range of values.
+        # =======================================================
+
         # placeholder for SD PDFs (mean over all SD subjects). These will be extracted after loading the SD trained model.
         # The shapes have to be hard-coded. Can't get the tile operations to work otherwise..
-        sd_pdf_pl = tf.placeholder(tf.float32, shape = [704, 61], name = 'sd_pdfs') # shape [num_channels, num_points_along_intensity_range]
-        sd_pdf_pot_pl = tf.placeholder(tf.float32, shape = [16, 61], name = 'sd_pot_pdfs') # shape [num_channels, num_points_along_intensity_range]
+        sd_pdf_g1_pl = tf.placeholder(tf.float32, shape = [688, 61], name = 'sd_pdfs_g1') # shape [num_channels, num_points_along_intensity_range]
+        sd_pdf_g2_pl = tf.placeholder(tf.float32, shape = [16, 101], name = 'sd_pdfs_g2') # shape [num_channels, num_points_along_intensity_range]
+        sd_pdf_g3_pl = tf.placeholder(tf.float32, shape = [nlabels, 601], name = 'sd_pdfs_g3') # shape [num_channels, num_points_along_intensity_range]
         # placeholder for the points at which the PDFs are evaluated
-        x_pdf_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs') # shape [num_points_along_intensity_range]
-        x_pdf_pot_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pot_pdfs') # shape [num_points_along_intensity_range]
+        x_pdf_g1_pl = tf.placeholder(tf.float32, shape = [61], name = 'x_pdfs_g1') # shape [num_points_along_intensity_range]
+        x_pdf_g2_pl = tf.placeholder(tf.float32, shape = [101], name = 'x_pdfs_g2') # shape [num_points_along_intensity_range]
+        x_pdf_g3_pl = tf.placeholder(tf.float32, shape = [601], name = 'x_pdfs_g3') # shape [num_points_along_intensity_range]
         # placeholder for the smoothing factor in the KDE computation
         alpha_pl = tf.placeholder(tf.float32, shape = [], name = 'alpha') # shape [1]
-        alpha_pot_pl = tf.placeholder(tf.float32, shape = [], name = 'alpha_pot') # shape [1]
-        # placeholder for x_values sampled from sd_pdfs (will be used to compute Lebesgue integral in KL divergence)
-        num_pts_lebesgue = 50
-        x_indices_lebesgue_pl = tf.placeholder(tf.int32, shape = [704, num_pts_lebesgue, 2], name = 'x_indices_lebesgue') # shape [num_channels, num_indices]
 
-        # ================================================================
+        # =======================================================
         # compute the pdfs of features of the TD image that is fed via the placeholder
-        # ================================================================
-        td_pdfs = tf.zeros([1, sd_pdf_pl.shape[1]]) # shape [num_channels, num_points_along_intensity_range]
+        # =======================================================
+
+        # ==================================
+        # GROUP 1
+        # ==================================
+        td_pdfs_g1 = tf.zeros([1, sd_pdf_g1_pl.shape[1]]) # shape [num_channels, num_points_along_intensity_range]
         for conv_block in [1,2,3,4,5,6,7]:
             for conv_sub_block in [1,2]:
+                if conv_block == 7 and conv_sub_block == 2:
+                    continue
                 conv_string = str(conv_block) + '_' + str(conv_sub_block)
                 features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
-
                 channel_pdf_this_layer_td = utils_kde.compute_feature_kdes(features_td,
                                                                            args.feature_subsampling_factor,
                                                                            args.features_randomized,
-                                                                           x_pdf_pl,
+                                                                           x_pdf_g1_pl,
                                                                            alpha_pl)
-                
-                td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
-
-        # Also add logits to the features where priors are computed
-        if args.use_logits_for_TTA == 1:
-            features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
-            channel_pdf_this_layer_td = utils_kde.compute_feature_kdes(features_td,
-                                                                       args.feature_subsampling_factor,
-                                                                       args.features_randomized,
-                                                                       x_pdf_pl,
-                                                                       alpha_pl)
-            td_pdfs = tf.concat([td_pdfs, channel_pdf_this_layer_td], 0)
-        
+                td_pdfs_g1 = tf.concat([td_pdfs_g1, channel_pdf_this_layer_td], 0)
         # Ignore the zeroth column that was added at the start of the loop
-        td_pdfs = td_pdfs[1:, :]
+        td_pdfs_g1 = td_pdfs_g1[1:, :]
+
+        # ==================================
+        # GROUP 2 (layer 7_2)
+        # ==================================
+        features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
+        td_pdfs_g2 = utils_kde.compute_feature_kdes(features_td,
+                                                    args.feature_subsampling_factor,
+                                                    args.features_randomized,
+                                                    x_pdf_g2_pl,
+                                                    alpha_pl)
+
+        # ==================================
+        # GROUP 3 (logits)
+        # ==================================
+        features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
+        td_pdfs_g3 = utils_kde.compute_feature_kdes(features_td,
+                                                    args.feature_subsampling_factor,
+                                                    args.features_randomized,
+                                                    x_pdf_g3_pl,
+                                                    alpha_pl)
 
         # ================================================================
         # compute the TTA loss - add ops for all losses and select based on the argument
         # ================================================================
-        loss_all_kl_op, loss_all_kl_lebesgue_op, loss_gaussian_kl_op, loss_all_cf_l2_op, sd_cfs, td_cfs = utils_kde.compute_kde_losses(sd_pdf_pl,
-                                                                                                                                       td_pdfs,
-                                                                                                                                       x_pdf_pl,
-                                                                                                                                       x_indices_lebesgue_pl)
-
-        # =================================
-        # Compute binary terms 
-        # =================================
-        # last layer. From here, there is a 1x1 conv that gives the logits
-        conv_string = str(7) + '_' + str(2)
-        features_last_layer = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
-        # Compute the first two moments for the spatial gradient magnitude for all channels of this layer
-        pairwise_potentials = utils_kde.compute_pairwise_potentials(features_last_layer,
-                                                                    args.POTENTIAL_TYPE)
-        pairwise_potentials_kde = utils_kde.compute_feature_kdes(pairwise_potentials,
-                                                                 args.feature_subsampling_factor,
-                                                                 args.features_randomized,
-                                                                 x_pdf_pot_pl,
-                                                                 alpha_pot_pl)
-        # KL-divergence between 1D distributions of gradient magnitudes
-        loss_binary_op = utils_kde.compute_kl_between_kdes(sd_pdf_pot_pl, pairwise_potentials_kde)
+        loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_pdf_g1_pl, td_pdfs_g1)
+        loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_pdf_g2_pl, td_pdfs_g2)
+        loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_pdf_g3_pl, td_pdfs_g3)
         
         # ==================================
         # Select loss to be minimized according to the arguments
         # ==================================
         # match full PDFs with KL loss
         if args.match_moments == 'All_KL': 
-            loss_unary_op = loss_all_kl_op
-        if args.match_moments == 'All_KL_LEBESGUE': 
-            loss_unary_op = loss_all_kl_lebesgue_op
-        # match Gaussian with KL loss
-        elif args.match_moments == 'Gaussian_KL':
-            loss_unary_op = loss_gaussian_kl_op
-        # min L2 distance between complex arrays (match CFs exactly)
-        elif args.match_moments == 'CF_L2':
-            loss_unary_op = loss_all_cf_l2_op
-
-        # =================================
-        # Total loss
-        # =================================
-        if args.BINARY == 0:
-            loss_op = loss_unary_op
-        elif args.BINARY == 1:
-            loss_op = loss_unary_op + args.BINARY_LAMBDA * loss_binary_op
+            loss_op = loss_all_kl_g1_op + loss_all_kl_g2_op + loss_all_kl_g3_op
                 
         # ================================================================
         # add losses to tensorboard
         # ================================================================
         tf.summary.scalar('loss/TTA', loss_op)         
-        tf.summary.scalar('loss/All_KL', loss_all_kl_op)
-        tf.summary.scalar('loss/All_KL_LEBESGUE', loss_all_kl_lebesgue_op)
-        tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
-        tf.summary.scalar('loss/All_CF_L2', loss_all_cf_l2_op)
-        tf.summary.scalar('loss/Binary_KDE_KL', loss_binary_op)
+        tf.summary.scalar('loss/All_KL_G1', loss_all_kl_g1_op)
+        tf.summary.scalar('loss/All_KL_G2', loss_all_kl_g2_op)
+        tf.summary.scalar('loss/All_KL_G3', loss_all_kl_g3_op)
         summary_during_tta = tf.summary.merge_all()
     
     # ================================================================
@@ -449,12 +406,6 @@ with tf.Graph().as_default():
     display_features_td_summary = tf.summary.image('display_features_td', display_features_td_pl)
     display_pdfs_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_pdfs_pl')
     pdfs_summary = tf.summary.image('PDFs', display_pdfs_pl)
-    display_pdfs_pairwise_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_pdfs_pairwise_pl')
-    pdfs_pairwise_summary = tf.summary.image('PDFs_pairwise', display_pdfs_pairwise_pl)
-    display_cfs_abs_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_cfs_abs_pl')
-    cfs_abs_summary = tf.summary.image('CFs_Magnitude', display_cfs_abs_pl)
-    display_cfs_angle_pl = tf.placeholder(tf.uint8, shape = [1, None, None, 1], name='display_cfs_angle_pl')
-    cfs_angle_summary = tf.summary.image('CFs_Phase', display_cfs_angle_pl)
 
     # ================================================================
     # create saver
@@ -488,9 +439,9 @@ with tf.Graph().as_default():
     # ================================================================
     if args.KDE == 0:
         
-        sd_gaussians_fname, sd_pot_gaussians_fname = exp_config.make_sd_gaussian_names(path_to_model,
-                                                                                       b_size_compute_sd_gaussians,
-                                                                                       args)
+        sd_gaussians_fname = exp_config.make_sd_gaussian_names(path_to_model,
+                                                               b_size_compute_sd_gaussians,
+                                                               args)
 
         gaussians_sd = utils_kde.compute_sd_gaussians(sd_gaussians_fname,
                                                       args.train_dataset,
@@ -503,77 +454,64 @@ with tf.Graph().as_default():
                                                       td_var,
                                                       images_pl)
 
-        pot_gaussians_sd = utils_kde.compute_sd_gaussians(sd_pot_gaussians_fname,
-                                                          args.train_dataset,
-                                                          imtr,
-                                                          image_depth_tr,
-                                                          orig_data_siz_z_train,
-                                                          b_size_compute_sd_gaussians,
-                                                          sess,
-                                                          pot_mu,
-                                                          pot_var,
-                                                          images_pl)
-
     # ================================================================
     # compute the SD PDFs once (extract the whole pdf instead of just the 1st and 2nd moments of the pdf)
     # These will be passed as placeholders for computing the loss in each iteration
     # ================================================================
     elif args.KDE == 1:
-        res = 0.1
-        x_min = -3.0
-        x_max = 3.0
-        x_values = np.arange(x_min, x_max + res, res)
-
-        sd_pdfs_fname = exp_config.make_sd_pdf_name(path_to_model,
-                                                    b_size_compute_sd_pdfs,
-                                                    args,
-                                                    x_min,
-                                                    x_max,
-                                                    res,
-                                                    'unary')
-        
+        kde_g1_params = [-3.0, 3.0, 0.1]
+        x_values_g1 = np.arange(kde_g1_params[0], kde_g1_params[1] + kde_g1_params[2], kde_g1_params[2])
+        sd_pdfs_fname_g1 = exp_config.make_sd_pdf_name(path_to_model, b_size_compute_sd_pdfs, args, 1, kde_g1_params)
         # [num_subjects, num_channels, num_x_points]
-        pdfs_sd = utils_kde.compute_sd_pdfs(sd_pdfs_fname,
-                                            args.train_dataset,
-                                            imtr,
-                                            image_depth_tr,
-                                            orig_data_siz_z_train,
-                                            b_size_compute_sd_pdfs,
-                                            sess,
-                                            td_pdfs,
-                                            images_pl,
-                                            x_pdf_pl,
-                                            x_values,
-                                            alpha_pl,
-                                            args.alpha)
+        pdfs_sd_g1 = utils_kde.compute_sd_pdfs(sd_pdfs_fname_g1,
+                                               args.train_dataset,
+                                               imtr,
+                                               image_depth_tr,
+                                               orig_data_siz_z_train,
+                                               b_size_compute_sd_pdfs,
+                                               sess,
+                                               td_pdfs_g1,
+                                               images_pl,
+                                               x_pdf_g1_pl,
+                                               x_values_g1,
+                                               alpha_pl,
+                                               args.alpha)
 
-        res = 0.25
-        x_min = 0.0
-        x_max = 15.0
-        x_values_pairwise = np.arange(x_min, x_max + res, res)
-
-        sd_pot_pdfs_fname = exp_config.make_sd_pdf_name(path_to_model,
-                                                        b_size_compute_sd_pdfs,
-                                                        args,
-                                                        x_min,
-                                                        x_max,
-                                                        res,
-                                                        'binary')
-
+        kde_g2_params = [-5.0, 5.0, 0.1]
+        x_values_g2 = np.arange(kde_g2_params[0], kde_g2_params[1] + kde_g2_params[2], kde_g2_params[2])
+        sd_pdfs_fname_g2 = exp_config.make_sd_pdf_name(path_to_model, b_size_compute_sd_pdfs, args, 2, kde_g2_params)
         # [num_subjects, num_channels, num_x_points]
-        pot_pdfs_sd = utils_kde.compute_sd_pdfs(sd_pot_pdfs_fname,
-                                                args.train_dataset,
-                                                imtr,
-                                                image_depth_tr,
-                                                orig_data_siz_z_train,
-                                                b_size_compute_sd_pdfs,
-                                                sess,
-                                                pairwise_potentials_kde,
-                                                images_pl,
-                                                x_pdf_pot_pl,
-                                                x_values_pairwise,
-                                                alpha_pot_pl,
-                                                args.BINARY_ALPHA)
+        pdfs_sd_g2 = utils_kde.compute_sd_pdfs(sd_pdfs_fname_g2,
+                                               args.train_dataset,
+                                               imtr,
+                                               image_depth_tr,
+                                               orig_data_siz_z_train,
+                                               b_size_compute_sd_pdfs,
+                                               sess,
+                                               td_pdfs_g2,
+                                               images_pl,
+                                               x_pdf_g2_pl,
+                                               x_values_g2,
+                                               alpha_pl,
+                                               args.alpha)
+
+        kde_g3_params = [-30.0, 30.0, 0.1]
+        x_values_g3 = np.arange(kde_g3_params[0], kde_g3_params[1] + kde_g3_params[2], kde_g3_params[2])
+        sd_pdfs_fname_g3 = exp_config.make_sd_pdf_name(path_to_model, b_size_compute_sd_pdfs, args, 3, kde_g3_params)
+        # [num_subjects, num_channels, num_x_points]
+        pdfs_sd_g3 = utils_kde.compute_sd_pdfs(sd_pdfs_fname_g3,
+                                               args.train_dataset,
+                                               imtr,
+                                               image_depth_tr,
+                                               orig_data_siz_z_train,
+                                               b_size_compute_sd_pdfs,
+                                               sess,
+                                               td_pdfs_g3,
+                                               images_pl,
+                                               x_pdf_g3_pl,
+                                               x_values_g3,
+                                               alpha_pl,
+                                               args.alpha)
 
     # ===================================
     # Set TTA vars to random values at the start of TTA, if requested
@@ -616,27 +554,21 @@ with tf.Graph().as_default():
         # =============================
         if args.match_with_sd == 1: # match with mean PDF over SD subjects
             if args.KDE == 1:
-                sd_pdf_this_step = np.mean(pdfs_sd, axis = 0)
-                sd_pot_pdf_this_step = np.mean(pot_pdfs_sd, axis = 0) # sd_pot_pdf_pl
-                x_indices_lebesgue_this_step = utils_kde.sample_sd_points(sd_pdf_this_step,
-                                                                          num_pts_lebesgue,
-                                                                          x_values) 
+                sd_pdf_g1_this_step = np.mean(pdfs_sd_g1, axis = 0)
+                sd_pdf_g2_this_step = np.mean(pdfs_sd_g2, axis = 0)
+                sd_pdf_g3_this_step = np.mean(pdfs_sd_g3, axis = 0)
             else:
                 sd_gaussian_this_step = np.mean(gaussians_sd, axis=0)
-                sd_pot_gaussian_this_step = np.mean(pot_gaussians_sd, axis=0)
 
         elif args.match_with_sd == 2: # select a different SD subject for each TTA iteration
             if args.KDE == 1:              
-                sub_id = np.random.randint(pdfs_sd.shape[0])  
-                sd_pdf_this_step = pdfs_sd[sub_id, :, :]
-                sd_pot_pdf_this_step = pot_pdfs_sd[sub_id, :, :] # sd_pot_pdf_pl
-                x_indices_lebesgue_this_step = utils_kde.sample_sd_points(sd_pdf_this_step,
-                                                                          num_pts_lebesgue,
-                                                                          x_values) 
+                sub_id = np.random.randint(pdfs_sd_g1.shape[0])  
+                sd_pdf_g1_this_step = pdfs_sd_g1[sub_id, :, :]
+                sd_pdf_g2_this_step = pdfs_sd_g2[sub_id, :, :]
+                sd_pdf_g3_this_step = pdfs_sd_g3[sub_id, :, :]
             else:
                 sub_id = np.random.randint(gaussians_sd.shape[0])
                 sd_gaussian_this_step = gaussians_sd[sub_id, :, :]
-                sd_pot_gaussian_this_step = pot_gaussians_sd[sub_id, :, :]
                         
         # =============================
         # For SFDA, select a different TD subject in each adaptation epochs
@@ -656,30 +588,20 @@ with tf.Graph().as_default():
         for b_i in range(0, test_image.shape[0], b_size):
             if args.KDE == 1:      
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
-                           sd_pdf_pl: sd_pdf_this_step, 
-                           sd_pdf_pot_pl: sd_pot_pdf_this_step,
-                           x_pdf_pl: x_values, 
-                           x_pdf_pot_pl: x_values_pairwise, 
+                           sd_pdf_g1_pl: sd_pdf_g1_this_step, 
+                           sd_pdf_g2_pl: sd_pdf_g2_this_step, 
+                           sd_pdf_g3_pl: sd_pdf_g3_this_step, 
+                           x_pdf_g1_pl: x_values_g1, 
+                           x_pdf_g2_pl: x_values_g2, 
+                           x_pdf_g3_pl: x_values_g3, 
                            alpha_pl: args.alpha,
-                           alpha_pot_pl: args.BINARY_ALPHA,
-                           lr_pl: tta_learning_rate,
-                           x_indices_lebesgue_pl: x_indices_lebesgue_this_step}
+                           lr_pl: tta_learning_rate}
 
             elif args.KDE == 0:      
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
                            sd_mu_pl: sd_gaussian_this_step[:,0], 
                            sd_var_pl: sd_gaussian_this_step[:,1],
-                           sd_pot_mu_pl: sd_pot_gaussian_this_step[:,0],
-                           sd_pot_var_pl: sd_pot_gaussian_this_step[:,1],
                            lr_pl: tta_learning_rate}
-                
-            # t1, t2 = sess.run([td_mu, grad_mag_mu], feed_dict=feed_dict)
-            # logging.info(np.unique(np.isnan(t1)))
-            # logging.info(np.unique(np.isnan(t2)))
-
-            if args.KDE == 0:
-                logging.info(np.round(sd_pot_gaussian_this_step[:5,0], 2))
-                logging.info(np.round(sd_pot_gaussian_this_step[:5,1], 2))
 
             # run the accumulate gradients op 
             sess.run(accumulate_gradients_op, feed_dict=feed_dict)
@@ -726,14 +648,15 @@ with tf.Graph().as_default():
         image_normalized = []
 
         for b_i in range(0, test_image.shape[0], b_size):
-            
             if b_i + b_size < test_image.shape[0]:
                 batch = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
             else:
                 # pad zeros to have complete batches
                 extra_zeros_needed = b_i + b_size - test_image.shape[0]
-                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...], np.zeros((extra_zeros_needed, test_image.shape[1], test_image.shape[2]))), axis=0), axis=-1)
-            
+                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...],
+                                       np.zeros((extra_zeros_needed,
+                                                 test_image.shape[1],
+                                                 test_image.shape[2]))), axis=0), axis=-1)
             label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
             image_normalized.append(sess.run(images_normalized, feed_dict={images_pl: batch}))
 
@@ -741,8 +664,14 @@ with tf.Graph().as_default():
         image_normalized = np.squeeze(np.array(image_normalized)).astype(float)  
 
         if b_size > 1:
-            label_predicted = np.reshape(label_predicted, (label_predicted.shape[0]*label_predicted.shape[1], label_predicted.shape[2], label_predicted.shape[3]))
-            image_normalized = np.reshape(image_normalized, (image_normalized.shape[0]*image_normalized.shape[1], image_normalized.shape[2], image_normalized.shape[3]))
+            label_predicted = np.reshape(label_predicted,
+                                         (label_predicted.shape[0]*label_predicted.shape[1],
+                                          label_predicted.shape[2],
+                                          label_predicted.shape[3]))
+            image_normalized = np.reshape(image_normalized,
+                                          (image_normalized.shape[0]*image_normalized.shape[1],
+                                           image_normalized.shape[2],
+                                           image_normalized.shape[3]))
             label_predicted = label_predicted[:test_image.shape[0], ...]
             image_normalized = image_normalized[:test_image.shape[0], ...]
 
@@ -772,25 +701,18 @@ with tf.Graph().as_default():
                                             label_predicted,
                                             test_image_gt)
 
+            # ===========================
+            # Display 7_2 layer features
+            # ===========================
             display_features = 1
             if display_features == 1:
 
-                # get Test image featuers
+                # Get Test image features
                 tmp = test_image.shape[0] // 2 - b_size//2
+                features_for_display_td = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
+                                                   feed_dict={images_pl: np.expand_dims(test_image[tmp:tmp+b_size, ...], axis=-1)})
 
-                display_grad_mag = 0
-                # display the computed potentials
-                if display_grad_mag == 1:
-                    features_for_display_td = sess.run(pairwise_potentials,
-                                                       feed_dict={images_pl: np.expand_dims(test_image[tmp:tmp+b_size, ...], axis=-1)})
-                # display the features
-                else:
-                    features_for_display_td = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
-                                                       feed_dict={images_pl: np.expand_dims(test_image[tmp:tmp+b_size, ...], axis=-1)})
-                                                   
-                                                   
-
-                # get SD image featuers
+                # Get SD image features
                 while True:
                     train_sub_num = np.random.randint(orig_data_siz_z_train.shape[0])
                     if args.train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
@@ -804,14 +726,10 @@ with tf.Graph().as_default():
                 # Select a batch from the center of the SD image
                 logging.info(sd_image.shape)
                 tmp = sd_image.shape[0] // 2 - b_size//2
-
-                if display_grad_mag == 1:
-                    features_for_display_sd = sess.run(pairwise_potentials,
-                                                       feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
-                else:
-                    features_for_display_sd = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
-                                                       feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
+                features_for_display_sd = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
+                                                   feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
                 
+                # Display
                 utils_vis.write_feature_summaries(step,
                                                   summary_writer,
                                                   sess,
@@ -823,7 +741,7 @@ with tf.Graph().as_default():
                                                   features_for_display_td)
 
             # ===========================
-            # visualize feature distribution alignment
+            # Visualize KDE / Gaussian alignment
             # ===========================
             if args.KDE == 0:
 
@@ -859,68 +777,36 @@ with tf.Graph().as_default():
                 b_size = args.b_size
                 num_batches = 0
                 for b_i in range(0, test_image.shape[0], b_size):
+                    
                     if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                        pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                       x_pdf_pl: x_values,
-                                                                       alpha_pl: args.alpha})
-                        pdfs_pot_this_batch = sess.run(pairwise_potentials_kde, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                                           x_pdf_pot_pl: x_values_pairwise,
-                                                                                           alpha_pot_pl: args.BINARY_ALPHA})
+
+                        batch_tmp = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
+                        pdfs_g1_this_batch = sess.run(td_pdfs_g1, feed_dict={images_pl: batch_tmp, x_pdf_g1_pl: x_values_g1, alpha_pl: args.alpha})
+                        pdfs_g2_this_batch = sess.run(td_pdfs_g2, feed_dict={images_pl: batch_tmp, x_pdf_g2_pl: x_values_g2, alpha_pl: args.alpha})
+                        pdfs_g3_this_batch = sess.run(td_pdfs_g3, feed_dict={images_pl: batch_tmp, x_pdf_g3_pl: x_values_g3, alpha_pl: args.alpha})
                         if b_i == 0:
-                            pdfs_td_this_step = pdfs_this_batch
-                            pdfs_td_pot_this_step = pdfs_pot_this_batch
+                            pdfs_td_g1_this_step = pdfs_g1_this_batch
+                            pdfs_td_g2_this_step = pdfs_g2_this_batch
+                            pdfs_td_g3_this_step = pdfs_g3_this_batch
                         else:
-                            pdfs_td_this_step = pdfs_td_this_step + pdfs_this_batch
-                            pdfs_td_pot_this_step = pdfs_td_pot_this_step + pdfs_pot_this_batch
+                            pdfs_td_g1_this_step = pdfs_td_g1_this_step + pdfs_g1_this_batch
+                            pdfs_td_g2_this_step = pdfs_td_g2_this_step + pdfs_g2_this_batch
+                            pdfs_td_g3_this_step = pdfs_td_g3_this_step + pdfs_g3_this_batch
                         num_batches = num_batches + 1
-                pdfs_td_this_step = pdfs_td_this_step / num_batches
-                pdfs_td_pot_this_step = pdfs_td_pot_this_step / num_batches
+
+                pdfs_td_g1_this_step = pdfs_td_g1_this_step / num_batches
+                pdfs_td_g2_this_step = pdfs_td_g2_this_step / num_batches
+                pdfs_td_g3_this_step = pdfs_td_g3_this_step / num_batches
 
                 utils_vis.write_pdfs(step,
                                      summary_writer,
                                      sess,
                                      pdfs_summary,
                                      display_pdfs_pl,
-                                     np.mean(pdfs_sd, axis = 0),
-                                     np.std(pdfs_sd, axis = 0),
-                                     pdfs_td_this_step,
-                                     x_values,
-                                     log_dir_tta,
-                                     deltas = [0, 32, 96, 224, 480, 608, 672],
-                                     num_channels = 5)
-
-                utils_vis.write_pdfs(step,
-                                     summary_writer,
-                                     sess,
-                                     pdfs_pairwise_summary,
-                                     display_pdfs_pairwise_pl,
-                                     np.mean(pot_pdfs_sd, axis = 0),
-                                     np.std(pot_pdfs_sd, axis = 0),
-                                     pdfs_td_pot_this_step,
-                                     x_values_pairwise,
-                                     log_dir_tta,
-                                     deltas = [0, 4, 8, 12],
-                                     num_channels = 4)
-
-                # ===========================
-                # visualize feature distribution alignment
-                # ===========================
-                b_i = 0
-                sd_cfs_batch_this_step = sess.run(sd_cfs, feed_dict={sd_pdf_pl: np.mean(pdfs_sd, axis = 0)})
-                td_cfs_batch_this_step = sess.run(td_cfs, feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                     x_pdf_pl: x_values,
-                                                                     alpha_pl: args.alpha})
-
-                utils_vis.write_cfs(step,
-                                    summary_writer,
-                                    sess,
-                                    cfs_abs_summary,
-                                    cfs_angle_summary,
-                                    display_cfs_abs_pl,
-                                    display_cfs_angle_pl,
-                                    sd_cfs_batch_this_step,
-                                    td_cfs_batch_this_step,
-                                    log_dir_tta)
+                                     np.mean(pdfs_sd_g1, axis = 0), np.std(pdfs_sd_g1, axis = 0), pdfs_td_g1_this_step, x_values_g1,
+                                     np.mean(pdfs_sd_g2, axis = 0), np.std(pdfs_sd_g2, axis = 0), pdfs_td_g2_this_step, x_values_g2,
+                                     np.mean(pdfs_sd_g3, axis = 0), np.std(pdfs_sd_g3, axis = 0), pdfs_td_g3_this_step, x_values_g3,
+                                     log_dir_tta)
 
         step = step + 1
 
