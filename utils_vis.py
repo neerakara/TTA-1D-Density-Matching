@@ -419,22 +419,16 @@ def write_pdfs(step,
                sess,
                pdfs_summary,
                display_pl,
-               pdfs_SD_mu,
-               pdfs_SD_std,
-               pdfs_TD,
-               x,
-               savedir,
-               deltas = [0, 32, 96, 224, 480, 608, 672],
-               num_channels = 5):
+               pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
+               pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
+               pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+               savedir):
 
     # stitch images
-    stitched_image = stitch_pdfs(pdfs_SD_mu,
-                                 pdfs_SD_std,
-                                 pdfs_TD,
-                                 x,
-                                 savedir,
-                                 deltas,
-                                 num_channels)
+    stitched_image = stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
+                                 pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
+                                 pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+                                 savedir)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -445,32 +439,50 @@ def write_pdfs(step,
 # ================================================================
 # function to stitch all images of a particular iteration together
 # ================================================================
-def stitch_pdfs(pdfs_SD_mu,
-                pdfs_SD_std,
-                pdfs_TD,
-                x,
-                savedir,
-                deltas,
-                num_channels):
+def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
+                pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
+                pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+                savedir):
         
     nx = 150
     ny = 150
+    num_layers_to_visualize = 8 # 1_1, 2_1, 3_1, 5_1, 6_1, 7_1, 7_2, logits
+    num_channels_per_layer = 5
 
     # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
-    stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
+    stitched_image = np.zeros((num_channels_per_layer*nx, num_layers_to_visualize*ny), dtype = np.float32)
 
+    # visualize group 1 channels (1_1, 2_1, 3_1, 5_1, 6_1, 7_1)
     sy = 0
-    for delta in deltas:
-        for c in range(num_channels):
+    for delta in [0, 32, 96, 480, 608, 672]:
+        for c in range(num_channels_per_layer):
             sx = c
-            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, delta+c, savedir)
+            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1, delta+c, savedir)
         sy = sy+1
+
+    # visualize group 2 channels (7_2)
+    for c in range(num_channels_per_layer):
+        sx = c
+        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2, c, savedir)
+    sy = sy+1
+
+    # visualize group 3 channels (logits)
+    for c in range(num_channels_per_layer):
+        if c < pdfs_TD_g3.shape[0]:
+            sx = c
+            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3, c, savedir)
+    sy = sy+1
 
     return stitched_image
 
 # ================================================================
 # ================================================================
-def save_tmp_pdf_and_load(pdfs_SD_mu, pdfs_SD_std, pdfs_TD, x, c, savedir):
+def save_tmp_pdf_and_load(pdfs_SD_mu,
+                          pdfs_SD_std,
+                          pdfs_TD,
+                          x,
+                          c,
+                          savedir):
     
     plt.figure(figsize=[1.5,1.5])
     plt.plot(x, pdfs_SD_mu[c,:], 'b')
@@ -631,8 +643,8 @@ def plot_histograms_pca_coefs(kdes_this_subject,
 # ==========================================================
 def plot_scatter_pca_coefs_pairwise(z,
                                     savepath,
-                                    nc = 7,
-                                    nr = 7,
+                                    nc = 4,
+                                    nr = 4,
                                     set_limits = False):
 
     plt.figure(figsize=[nc*3, nr*3])
@@ -683,8 +695,8 @@ def plot_kdes_for_sd_and_td(kdes_td_subject,
         for r in range(nr):
             plt.subplot(nc, nr, nc*c+r+1)
             for s in range(kdes_sd_subjects.shape[0]):
-                plt.plot(z_vals, kdes_sd_subjects[s, nc*c+r, :], 'blue')            
-            plt.plot(z_vals, kdes_td_subject[nc*c+r, :], 'red')
+                plt.plot(z_vals, kdes_sd_subjects[s, nc*c+r, :], 'blue', linewidth=0.5)            
+            plt.plot(z_vals, kdes_td_subject[nc*c+r, :], 'red', linewidth=0.5)
             plt.title('component ' + str(nc*c+r+1))
     
     plt.savefig(savepath, bbox_inches='tight')

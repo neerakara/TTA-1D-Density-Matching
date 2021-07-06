@@ -313,13 +313,12 @@ def extract_patches(features,
 
     return patches_reshaped
 
-
 # ==================================
 # ==================================
 def compute_pca_latent_kdes(latents, alpha):
 
-    z_min = -20.0
-    z_max = 20.0
+    z_min = -10.0
+    z_max = 10.0
     res = 0.1
     z_vals = np.arange(z_min, z_max + res, res)
 
