@@ -49,9 +49,10 @@ parser.add_argument('--POTENTIAL_TYPE', type = int, default = 2) # 1 / 2
 parser.add_argument('--BINARY_LAMBDA', type = float, default = 0.1) # 1.0
 parser.add_argument('--BINARY_ALPHA', type = float, default = 1.0) # 1.0 / 10.0 (smoothness paramter for the KDE of the binary potentials)
 # PCA settings
-parser.add_argument('--patch_size', type = int, default = 32) # 32 / 64 / 128
-parser.add_argument('--pca_stride', type = int, default = 16) # 64 / 128
+parser.add_argument('--patch_size', type = int, default = 128) # 32 / 64 / 128
+parser.add_argument('--pca_stride', type = int, default = 32) # 64 / 128
 parser.add_argument('--pca_channel', type = int, default = 0) # 0 / 1 .. 15
+parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--pca_kde_alpha', type = float, default = 1.0) # 0.1 / 1.0 / 10.0
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
@@ -227,7 +228,7 @@ def main():
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_i2l.restore(sess, checkpoint_path)
 
-        prefix = 'pca/p' + str(args.patch_size) + 's' + str(args.pca_stride) + '/'
+        prefix = 'pca/p' + str(args.patch_size) + 's' + str(args.pca_stride) + '_dim' + str(args.PCA_LATENT_DIM) + '/'
         if not tf.gfile.Exists(log_dir_sd + prefix):
             tf.gfile.MakeDirs(log_dir_sd + prefix)
 
@@ -264,7 +265,7 @@ def main():
         # PCA
         pca_path = log_dir_sd + prefix + 'pca_all_sd_subjects_channel' + str(args.pca_channel) + '.pkl'
         if not os.path.exists(pca_path):
-            num_pcs = 50
+            num_pcs = args.PCA_LATENT_DIM
             pca = PCA(n_components = num_pcs, whiten=True)
             logging.info("Fitting PCA parameters to centered SD patches from all subjects")
             pca.fit(sd_patches)
@@ -290,7 +291,7 @@ def main():
         # visualize the principal components
         if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'principal_components.png') == False):
             logging.info("Visualizing principal components..")
-            utils_vis.visualize_principal_components(pca.components_, log_dir_sd + prefix + 'principal_components.png', args.patch_size, nc = 5, nr = 5)
+            utils_vis.visualize_principal_components(pca.components_, log_dir_sd + prefix + 'principal_components.png', args.patch_size, nc = 3, nr = 3)
 
         # get latent representation of all SD patches (of all subjects)
         logging.info("Finding latent representation of SD patches:")
@@ -301,7 +302,7 @@ def main():
         if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pca_coefs_whitened_sd_pairwise.png') == False):
             logging.info("Visualizing pairwise scatter plots of latent dimensions of all SD subjects..")
             utils_vis.plot_scatter_pca_coefs_pairwise(sd_patches_latent,
-                                                    savepath = log_dir_sd + prefix + 'pca_coefs_whitened_sd_pairwise.png')
+                                                      savepath = log_dir_sd + prefix + 'pca_coefs_whitened_sd_pairwise.png')
 
         # visualize reconstructions of all sd patches
         sd_patches_recon = pca.inverse_transform(sd_patches_latent)
@@ -327,14 +328,14 @@ def main():
             kdes_this_subject, z_vals = utils_kde.compute_pca_latent_kdes(sd_patches_this_sub_latent, args.pca_kde_alpha)
             kdes_all_sd_subjects.append(kdes_this_subject)
 
-            if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pca_coefs_sd_pairwise_sub' + str(train_sub_num+1) + '.png') == False):
-                utils_vis.plot_scatter_pca_coefs_pairwise(sd_patches_this_sub_latent,
-                                                          savepath = log_dir_sd + prefix + 'pca_coefs_sd_pairwise_sub' + str(train_sub_num+1) + '.png')
+            # if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pca_coefs_sd_pairwise_sub' + str(train_sub_num+1) + '.png') == False):
+            #     utils_vis.plot_scatter_pca_coefs_pairwise(sd_patches_this_sub_latent,
+            #                                               savepath = log_dir_sd + prefix + 'pca_coefs_sd_pairwise_sub' + str(train_sub_num+1) + '.png')
 
-            if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'kde_pca_coefs_sd_sub' + str(train_sub_num+1) + '.png') == False):
-                utils_vis.plot_histograms_pca_coefs(kdes_this_subject,
-                                                    z_vals,
-                                                    savepath = log_dir_sd + prefix + 'kde_pca_coefs_sd_sub' + str(train_sub_num+1) + '.png')
+            # if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'kde_pca_coefs_sd_sub' + str(train_sub_num+1) + '.png') == False):
+            #     utils_vis.plot_histograms_pca_coefs(kdes_this_subject,
+            #                                         z_vals,
+            #                                         savepath = log_dir_sd + prefix + 'kde_pca_coefs_sd_sub' + str(train_sub_num+1) + '.png')
 
         kdes_all_sd_subjects = np.array(kdes_all_sd_subjects)
         kde_path = log_dir_sd + prefix + 'kde_alpha' + str(args.pca_kde_alpha) + '_all_sd_subjects_channel' + str(args.pca_channel) + '.npy'
@@ -343,7 +344,7 @@ def main():
         # ==================================================================
         # Check if the KDEs of TD subjects differ from those of the SD subjects
         # ==================================================================
-        for sub_num in range(1):#(orig_data_siz_z.shape[0]):
+        for sub_num in range(10):#(orig_data_siz_z.shape[0]):
             subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
             subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])
             test_image = imts[subject_id_start_slice:subject_id_end_slice,:,:]  
