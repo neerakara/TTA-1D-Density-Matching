@@ -150,33 +150,30 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
 # ================================================================
 def make_tta_exp_name(args):
     exp_str = args.tta_string + 'KDE' + str(args.KDE) # Whether using KDE as an intermediate step or not 
+    
     if args.KDE == 1:
         exp_str = exp_str + '/Alpha' + str(args.alpha) # If KDE is used, what's the smoothness parameter?
+        exp_str = exp_str + '_Groups' + str(args.KDE_Groups) # While computing the KDEs, are the channels divided into groups with different intensity domains
     elif args.KDE == 0:
         exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
-    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2
-    if args.BINARY == 1:
-        if args.KDE == 0:
-            exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
-        elif args.KDE == 1:
-            exp_str = exp_str + '/BINARY/POT_' + str(args.POTENTIAL_TYPE) + '_ALPHA_' + str(args.BINARY_ALPHA) + '_LAMBDA_' + str(args.BINARY_LAMBDA)
-    elif args.RANDOM_FEATURES == 1:
-        exp_str = exp_str + '/RANDOM_FEATURES/NUM' + str(args.NUM_RANDOM_FEATURES) + '_PATCHsize' + str(args.PATCH_SIZE)
-        if args.KDE == 0:
-            exp_str = exp_str + '_COV_' + args.RANDOM_FEATURES_GAUSSIAN_COV
-        elif args.KDE == 1:
-            exp_str = exp_str + '_ALPHA_' + str(args.RANDOM_FEATURES_KDE_ALPHA)
+    
+    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2    
+
+    exp_str = exp_str + '/PCA' + str(args.PCA_PSIZE)
+
     exp_str = exp_str + '/Vars' + args.tta_vars 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
     exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
-    if args.use_logits_for_TTA == 1:
-        exp_str = exp_str + '_logits' + str(args.use_logits_for_TTA) # If logits are used for feature matching or not
+    
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
+    
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+    
     if args.tta_init_from_scratch == 1:
         exp_str = exp_str + '/Reinit_before_TTA'
+    
     exp_str = exp_str + '/'
 
     return exp_str
@@ -195,9 +192,8 @@ def make_sd_gaussian_names(path_to_model, b_size, args):
         fname = fname + '_incl_logits'    
 
     sd_gaussians_filename = fname + '.npy' 
-    sd_grad_gaussians_filename = fname + '_pot' + str(args.POTENTIAL_TYPE) + '.npy' 
 
-    return sd_gaussians_filename, sd_grad_gaussians_filename
+    return sd_gaussians_filename
 
 # ================================================================
 # Function to make the name for the file containing SD Gaussian parameters
@@ -216,23 +212,20 @@ def make_sd_RP_gaussian_names(path_to_model,
     return fname
 
 # ================================================================
-# Function to make the name for the file containing SD KDE parameters
+# Function to make the name for the file containing SD KDEs
 # ================================================================
-def make_sd_pdf_name(path_to_model, b_size, args, x_min, x_max, res, potential_type):
+def make_sd_pdf_name(path_to_model,
+                     b_size,
+                     args,
+                     group,
+                     group_kde_params):
 
-    if potential_type == 'unary':
-        pdf_str = 'alpha' + str(args.alpha) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
-    elif potential_type == 'binary':
-        pdf_str = 'alpha' + str(args.BINARY_ALPHA) + 'xmin' + str(x_min) + 'xmax' + str(x_max) + '_res' + str(res) + '_bsize' + str(b_size)
-    
-    if args.use_logits_for_TTA == 1:
-        pdf_str = pdf_str + '_incl_logits'
-    
-    fname = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise'
-
-    if potential_type == 'unary':
-        sd_pdfs_fname = fname + '.npy'
-    elif potential_type == 'binary':
-        sd_pdfs_fname = fname + '_pot' + str(args.POTENTIAL_TYPE) + '.npy' 
+    pdf_str = 'alpha' + str(args.alpha)
+    pdf_str = pdf_str + '_group' + str(group)
+    pdf_str = pdf_str + 'xmin' + str(group_kde_params[0])
+    pdf_str = pdf_str + 'xmax' + str(group_kde_params[1])
+    pdf_str = pdf_str + 'res' + str(group_kde_params[2])
+    pdf_str = pdf_str + '_bsize' + str(b_size)    
+    sd_pdfs_fname = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
 
     return sd_pdfs_fname

@@ -220,9 +220,17 @@ def save_sample_results_vae_dae(x,
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()
     
-def plot_graph(a, b, save_path):
+def plot_graph(a,
+               b,
+               save_path,
+               x_range=None,
+               y_range=None):
     plt.figure()
     plt.plot(a, b)
+    if x_range != None:
+        plt.xlim(x_range)
+    if y_range != None:
+        plt.ylim(y_range)
     plt.savefig(save_path)
     plt.close()
 
@@ -422,12 +430,14 @@ def write_pdfs(step,
                pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+               pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                savedir):
 
     # stitch images
     stitched_image = stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                                  pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                                  pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+                                 pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                                  savedir)
     
     # make shape and type like tensorboard wants
@@ -442,11 +452,12 @@ def write_pdfs(step,
 def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                 pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                 pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
+                pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                 savedir):
         
     nx = 150
     ny = 150
-    num_layers_to_visualize = 8 # 1_1, 2_1, 3_1, 5_1, 6_1, 7_1, 7_2, logits
+    num_layers_to_visualize = 9 # 1_1, 2_1, 3_1, 5_1, 6_1, 7_1, 7_2, logits, pca
     num_channels_per_layer = 5
 
     # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
@@ -471,6 +482,12 @@ def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
         if c < pdfs_TD_g3.shape[0]:
             sx = c
             stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3, c, savedir)
+    sy = sy+1
+
+    # visualize pca 1st latent component of first 5 channels of 7_2
+    for c in range(num_channels_per_layer):
+        sx = c
+        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z, 10*c, savedir) # num_pca_latents = 10
     sy = sy+1
 
     return stitched_image
@@ -574,7 +591,7 @@ def save_patches(patches,
             plt.imshow(np.reshape(patches[ids[nc*c+r],:], [psize,psize]), cmap='gray')
             # plt.clim([0,1.1])
             plt.colorbar()
-            plt.title('Patch ID: ' + str(ids[nc*c+r]))
+            plt.title('Mean: ' + str(np.round(np.mean(patches[ids[nc*c+r],:]), 2)))
     
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()
@@ -590,12 +607,11 @@ def save_features(features,
     plt.figure(figsize=[nc*3, nr*3])
     for c in range(nc):     
         for r in range(nr): 
-            plt.subplot(nc, nr, nc*c+r+1)
-            plt.imshow(features[nc*c+r, :, :, 0], cmap='gray')
-            # plt.clim([0, 1.1])
-            plt.colorbar()
-            plt.title('Feature ID: ' + str(nc*c+r))
-    
+            if nc*c+r < features.shape[0]:
+                plt.subplot(nc, nr, nc*c+r+1)
+                plt.imshow(features[nc*c+r, :, :], cmap='gray')
+                # plt.clim([0, 1.1])
+                plt.colorbar()
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()
 
@@ -676,6 +692,26 @@ def visualize_principal_components(pcs,
             plt.imshow(np.reshape(pcs[nc*c+r, :], [psize, psize]), cmap='gray')
             plt.colorbar()
             plt.title('component: ' + str(nc*c+r+1))
+    
+    plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def plot_kdes_for_sd_latents(kdes_sd_subjects,
+                             z_vals,
+                             savepath,
+                             nc = 3,
+                             nr = 3):
+
+    plt.figure(figsize=[nc*3, nr*3])
+
+    for c in range(nc):     
+        for r in range(nr):
+            plt.subplot(nc, nr, nc*c+r+1)
+            for s in range(kdes_sd_subjects.shape[0]):
+                plt.plot(z_vals, kdes_sd_subjects[s, nc*c+r, :], 'blue', linewidth=0.5)            
+            plt.title('component ' + str(nc*c+r+1))
     
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()

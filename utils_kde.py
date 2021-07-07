@@ -85,9 +85,9 @@ def compute_feature_kdes(features,
             # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
             # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
             random_indices = tf.random.uniform(shape=[features.shape[0].value // feature_subsampling_factor],
-                                                minval=0,
-                                                maxval=features.shape[0].value - 1,
-                                                dtype=tf.int32)
+                                               minval=0,
+                                               maxval=features.shape[0].value - 1,
+                                               dtype=tf.int32)
             features = tf.gather(features, random_indices, axis=0)
 
     features = tf.tile(tf.expand_dims(features, 0), multiples = [x.shape[0], 1, 1])
@@ -102,6 +102,28 @@ def compute_feature_kdes(features,
     # at the end, we get 1 pdf (evaluated at the intensity values in x) per channel
 
     return channel_pdf_this_layer_td
+
+# ==============================================
+# ==============================================
+def compute_pca_latent_kdes_tf(latents, # [num_active_patches, num_latent_dims] (latent dims of all channels stacked together)
+                               z, # [range where to evaluate the KDE] [num_z_points]
+                               alpha): # [smoothness param]
+
+    # https://stackoverflow.com/questions/47537552/tensorflow-how-to-deal-with-dynamic-shape-trying-to-tile-and-concatenate-two-te
+    dim = tf.shape(latents)[0]
+
+    latents = tf.tile(tf.expand_dims(latents, 0), multiples = [z.shape[0], 1, 1]) # [num_z_points, num_active_patches, num_latent_dims]
+    z_tmp = tf.tile(tf.expand_dims(tf.expand_dims(z, -1), -1), multiples = [1, dim, latents.shape[2]]) # [num_z_points, num_active_patches, num_latent_dims]
+
+    # the 3 dimensions are : 
+    # 1. the intensity values where the pdf is evaluated,
+    # 2. all samples
+    # 3. the channels 
+    channel_pdf_this_layer_td = tf.reduce_mean(tf.math.exp(- alpha * tf.math.square(z_tmp - latents)), axis=1)
+    channel_pdf_this_layer_td = tf.transpose(channel_pdf_this_layer_td) 
+    # at the end, we get 1 pdf (evaluated at the intensity values in x) per channel
+
+    return channel_pdf_this_layer_td # [num_latent_dims, num_z_points]
 
 # ==============================================
 # ==============================================
@@ -303,7 +325,7 @@ def extract_patches(features,
     # let's treat all channels separately for now.
     # let's just select one channel for now
 
-    patches = tf.image.extract_image_patches(features[:,:,:,channel:channel+1],
+    patches = tf.image.extract_image_patches(tf.expand_dims(tf.gather(features, channel, axis=-1), axis=-1),
                                              ksizes = [1, psize, psize, 1],
                                              strides = [1, stride, stride, 1],
                                              rates = [1, 1, 1, 1],
@@ -315,10 +337,20 @@ def extract_patches(features,
 
 # ==================================
 # ==================================
+def compute_pca_latents(patches, mean, pcs, var):
+
+    patches_centered = patches - mean
+    latents = tf.matmul(patches_centered, tf.transpose(pcs))
+    latents_whitened = latents / tf.sqrt(var)
+
+    return latents_whitened
+
+# ==================================
+# ==================================
 def compute_pca_latent_kdes(latents, alpha):
 
-    z_min = -10.0
-    z_max = 10.0
+    z_min = -5.0
+    z_max = 5.0
     res = 0.1
     z_vals = np.arange(z_min, z_max + res, res)
 

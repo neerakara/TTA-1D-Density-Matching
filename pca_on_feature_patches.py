@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
@@ -43,17 +43,13 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
-# MRF settings
-parser.add_argument('--BINARY', default = 1) # 1 / 0
-parser.add_argument('--POTENTIAL_TYPE', type = int, default = 2) # 1 / 2
-parser.add_argument('--BINARY_LAMBDA', type = float, default = 0.1) # 1.0
-parser.add_argument('--BINARY_ALPHA', type = float, default = 1.0) # 1.0 / 10.0 (smoothness paramter for the KDE of the binary potentials)
 # PCA settings
-parser.add_argument('--patch_size', type = int, default = 128) # 32 / 64 / 128
-parser.add_argument('--pca_stride', type = int, default = 32) # 64 / 128
+parser.add_argument('--patch_size', type = int, default = 16) # 32 / 64 / 128
+parser.add_argument('--pca_stride', type = int, default = 8) # 64 / 128
+parser.add_argument('--pca_layer', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--pca_channel', type = int, default = 0) # 0 / 1 .. 15
-parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
-parser.add_argument('--pca_kde_alpha', type = float, default = 1.0) # 0.1 / 1.0 / 10.0
+parser.add_argument('--PCA_LATENT_DIM', type = int, default = 50) # 10 / 50
+parser.add_argument('--pca_kde_alpha', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
@@ -84,25 +80,10 @@ image_depth_ts = dataset_params[4]
 whole_gland_results = dataset_params[5]
 
 # ================================================================
-# Make the name for this TTA run
-# ================================================================
-exp_str = exp_config.make_tta_exp_name(args)
-
-# ================================================================
 # Setup directories for this run
 # ================================================================
 expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
-log_dir_tta = log_dir_sd + exp_str
-
-# ==================================================================
-# Identifier for SFDA
-# ==================================================================
-if args.TTA_or_SFDA == 'SFDA':
-    if args.test_dataset == 'USZ':
-        td_string = 'SFDA_' + args.test_dataset + '/'
-    elif args.test_dataset == 'PROMISE':    
-        td_string = 'SFDA_' + args.test_dataset + '_' + args.PROMISE_SUB_DATASET + '/'
 
 # ==================================================================
 # ==================================================================
@@ -167,13 +148,26 @@ def main():
         # Get features of one of the last layers and reduce their dimensionality with a random projection
         # ================================================================
         # last layer. From here, there is a 1x1 conv that gives the logits
-        conv_string = str(7) + '_' + str(2)
-        features_last_layer = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
+        features_last_layer = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
         patches_last_layer = utils_kde.extract_patches(features_last_layer,
                                                        channel = args.pca_channel,
                                                        psize = args.patch_size,
                                                        stride = args.pca_stride)
-                        
+
+        # Accessing logits directly gives an error, but accesing it like this is fine! Weird TF!
+        features_logits = tf.identity(logits)
+        patches_logits = utils_kde.extract_patches(features_logits,
+                                                   channel = args.pca_channel,
+                                                   psize = args.patch_size,
+                                                   stride = args.pca_stride)
+
+        # Get softmax and use these to select active patches
+        features_softmax = tf.identity(softmax)
+        patches_softmax = utils_kde.extract_patches(features_softmax,
+                                                    channel = 2, # This needs to be 1 or 2 for prostate data
+                                                    psize = args.patch_size,
+                                                    stride = args.pca_stride)
+
         # ================================================================
         # divide the vars into segmentation network and normalization network
         # ================================================================
@@ -228,47 +222,87 @@ def main():
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_i2l.restore(sess, checkpoint_path)
 
-        prefix = 'pca/p' + str(args.patch_size) + 's' + str(args.pca_stride) + '_dim' + str(args.PCA_LATENT_DIM) + '/'
+        # ================================================================
+        # Create dir for PCA
+        # ================================================================
+        prefix = 'pca/p' + str(args.patch_size) 
+        prefix = prefix + 's' + str(args.pca_stride)
+        prefix = prefix + '_dim' + str(args.PCA_LATENT_DIM)
+        prefix = prefix + '_' + args.pca_layer + '_channel' + str(args.pca_channel) + '/'
         if not tf.gfile.Exists(log_dir_sd + prefix):
             tf.gfile.MakeDirs(log_dir_sd + prefix)
 
         # ================================================================
         # Extract features from the last layer (before the logits) of all SD images
         # ================================================================
+        sd_features = np.zeros([orig_data_siz_z_train.shape[0], image_size[0], image_size[1]]) 
         sd_patches = np.zeros([1,args.patch_size*args.patch_size])
+        sd_patches_active = np.zeros([1,args.patch_size*args.patch_size])
         for train_sub_num in range(orig_data_siz_z_train.shape[0]):
             train_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
             feed_dict={images_pl: np.expand_dims(train_image, axis=-1)}
-            feats_last_layer = sess.run(features_last_layer, feed_dict=feed_dict)
-            ptchs_last_layer = sess.run(patches_last_layer, feed_dict=feed_dict)
-            sd_patches = np.concatenate((sd_patches, ptchs_last_layer), axis=0)
+            if args.pca_layer == 'layer_7_2':
+                feats_last_layer = sess.run(features_last_layer, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_last_layer, feed_dict=feed_dict)
+            elif args.pca_layer == 'logits':
+                feats_last_layer = sess.run(features_logits, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_logits, feed_dict=feed_dict)
+            elif args.pca_layer == 'softmax':
+                feats_last_layer = sess.run(features_softmax, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_softmax, feed_dict=feed_dict)
+            
+            # get corresponding patches of the softmax of class 2
+            ptchs_last_layer_softmax = sess.run(patches_softmax, feed_dict=feed_dict)
+
+            # collect features from the central slice for vis
+            sd_features[train_sub_num, :, :] = feats_last_layer[feats_last_layer.shape[0]//2, :, :, args.pca_channel]
+
+            # number of patches from this subject
             logging.info("Number of patches in SD subject " + str(train_sub_num+1) + ": " + str(ptchs_last_layer.shape[0]))
+            sd_patches = np.concatenate((sd_patches, ptchs_last_layer), axis=0)
+
+            # extract 'active' patches -> ones for which the softmax of class two has a high value in the central pixel
+            actives_ptchs_last_layer = ptchs_last_layer[np.where(ptchs_last_layer_softmax[:, ptchs_last_layer_softmax.shape[1]//2 + args.patch_size//2] > 0.8)[0], :]
+            logging.info("Number of active patches in SD subject " + str(train_sub_num+1) + ": " + str(actives_ptchs_last_layer.shape[0]))
+            sd_patches_active = np.concatenate((sd_patches_active, actives_ptchs_last_layer), axis=0)
 
         sd_patches = np.array(sd_patches[1:,:])
+        sd_patches_active = np.array(sd_patches_active[1:,:])
+
         logging.info("Number of all SD patches:" + str(sd_patches.shape[0]))
+        logging.info("Number of all active SD patches:" + str(sd_patches_active.shape[0]))
+
         random_indices = np.random.randint(0, sd_patches.shape[0], 100)
+        random_indices_active = np.random.randint(0, sd_patches_active.shape[0], 100)
 
         redraw = False
         # visualize feature maps 
-        if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix) == False):
-            utils_vis.save_features(feats_last_layer, savepath = log_dir_sd + prefix + 'features_NCI_onesubect.png')
+        if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'SD_features.png') == False):
+            utils_vis.save_features(sd_features, savepath = log_dir_sd + prefix + 'SD_features.png')
         
         # visualize some patches (randomly selected from all SD subjects)
         if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'patches_NCI.png') == False):
             utils_vis.save_patches(sd_patches,
-                                savepath = log_dir_sd + prefix + 'patches_NCI.png',
-                                ids = random_indices,
-                                nc = 10,
-                                nr = 10,
-                                psize = args.patch_size)
+                                   savepath = log_dir_sd + prefix + 'patches_NCI.png',
+                                   ids = random_indices,
+                                   nc = 10,
+                                   nr = 10,
+                                   psize = args.patch_size)
+
+            utils_vis.save_patches(sd_patches_active,
+                                   savepath = log_dir_sd + prefix + 'patches_NCI_active.png',
+                                   ids = random_indices_active,
+                                   nc = 10,
+                                   nr = 10,
+                                   psize = args.patch_size)
 
         # PCA
-        pca_path = log_dir_sd + prefix + 'pca_all_sd_subjects_channel' + str(args.pca_channel) + '.pkl'
+        pca_path = log_dir_sd + prefix + 'pca_all_sd_subjects.pkl'
         if not os.path.exists(pca_path):
             num_pcs = args.PCA_LATENT_DIM
             pca = PCA(n_components = num_pcs, whiten=True)
             logging.info("Fitting PCA parameters to centered SD patches from all subjects")
-            pca.fit(sd_patches)
+            pca.fit(sd_patches_active)
             # The fit method subtracts the mean of each feature and saves the subtracted mean
             # The mean is then used while transforming new datapoints from x to z or z to x.
             # write to file
@@ -295,21 +329,21 @@ def main():
 
         # get latent representation of all SD patches (of all subjects)
         logging.info("Finding latent representation of SD patches:")
-        sd_patches_latent = pca.transform(sd_patches)
-        logging.info("size of latent representation of SD patches: " + str(sd_patches_latent.shape))
+        sd_patches_active_latent = pca.transform(sd_patches_active)
+        logging.info("size of latent representation of SD patches: " + str(sd_patches_active_latent.shape))
 
         # plot scatter plot of pairs of latent dimensions of all SD patches
         if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pca_coefs_whitened_sd_pairwise.png') == False):
             logging.info("Visualizing pairwise scatter plots of latent dimensions of all SD subjects..")
-            utils_vis.plot_scatter_pca_coefs_pairwise(sd_patches_latent,
+            utils_vis.plot_scatter_pca_coefs_pairwise(sd_patches_active_latent,
                                                       savepath = log_dir_sd + prefix + 'pca_coefs_whitened_sd_pairwise.png')
 
         # visualize reconstructions of all sd patches
-        sd_patches_recon = pca.inverse_transform(sd_patches_latent)
+        sd_patches_active_recon = pca.inverse_transform(sd_patches_active_latent)
         if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'patches_NCI_recon.png') == False):
-            utils_vis.save_patches(sd_patches_recon,
+            utils_vis.save_patches(sd_patches_active_recon,
                                    savepath = log_dir_sd + prefix + 'patches_NCI_recon.png',
-                                   ids = random_indices,
+                                   ids = random_indices_active,
                                    nc = 10,
                                    nr = 10,
                                    psize = args.patch_size)
@@ -322,10 +356,16 @@ def main():
             train_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
             feed_dict={images_pl: np.expand_dims(train_image, axis=-1)}
             sd_patches_this_sub = sess.run(patches_last_layer, feed_dict = feed_dict)
-            sd_patches_this_sub_latent = pca.transform(sd_patches_this_sub)
+            sd_patches_this_sub_softmax = sess.run(patches_softmax, feed_dict=feed_dict)
+            sd_active_patches_this_sub = sd_patches_this_sub[np.where(sd_patches_this_sub_softmax[:, sd_patches_this_sub.shape[1]//2 + args.patch_size//2] > 0.8)[0], :]
+            sd_active_patches_this_sub_latent = pca.transform(sd_active_patches_this_sub)
+
+            logging.info(sd_active_patches_this_sub_latent.shape)
+            logging.info("Min latent value: " + str(np.min(sd_active_patches_this_sub_latent)))
+            logging.info("Max latent value: " + str(np.max(sd_active_patches_this_sub_latent)))
 
             # compute dimension wise KDE for this subject
-            kdes_this_subject, z_vals = utils_kde.compute_pca_latent_kdes(sd_patches_this_sub_latent, args.pca_kde_alpha)
+            kdes_this_subject, z_vals = utils_kde.compute_pca_latent_kdes(sd_active_patches_this_sub_latent, args.pca_kde_alpha)
             kdes_all_sd_subjects.append(kdes_this_subject)
 
             # if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pca_coefs_sd_pairwise_sub' + str(train_sub_num+1) + '.png') == False):
@@ -341,10 +381,14 @@ def main():
         kde_path = log_dir_sd + prefix + 'kde_alpha' + str(args.pca_kde_alpha) + '_all_sd_subjects_channel' + str(args.pca_channel) + '.npy'
         np.save(kde_path, kdes_all_sd_subjects)
 
+        utils_vis.plot_kdes_for_sd_latents(kdes_all_sd_subjects,
+                                           z_vals,
+                                           savepath = log_dir_sd + prefix + 'kde_sd_subjects.png')
+
         # ==================================================================
         # Check if the KDEs of TD subjects differ from those of the SD subjects
         # ==================================================================
-        for sub_num in range(10):#(orig_data_siz_z.shape[0]):
+        for sub_num in range(5, 10):#(orig_data_siz_z.shape[0]):
             subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
             subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])
             test_image = imts[subject_id_start_slice:subject_id_end_slice,:,:]  
@@ -354,24 +398,37 @@ def main():
             # Extract features from the last layer (before the logits) of a TD image
             # ================================================================
             feed_dict={images_pl: np.expand_dims(test_image, axis=-1)}
-            feats_last_layer = sess.run(features_last_layer, feed_dict=feed_dict)
-            ptchs_last_layer = sess.run(patches_last_layer, feed_dict=feed_dict)
-            random_indices = np.random.randint(0, ptchs_last_layer.shape[0], 100)
+
+            if args.pca_layer == 'layer_7_2':
+                feats_last_layer = sess.run(features_last_layer, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_last_layer, feed_dict=feed_dict)
+            elif args.pca_layer == 'logits':
+                feats_last_layer = sess.run(features_logits, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_logits, feed_dict=feed_dict)
+            elif args.pca_layer == 'softmax':
+                feats_last_layer = sess.run(features_softmax, feed_dict=feed_dict)
+                ptchs_last_layer = sess.run(patches_softmax, feed_dict=feed_dict)
+
+            ptchs_last_layer_softmax = sess.run(patches_softmax, feed_dict=feed_dict)
+
+            actives_ptchs_last_layer = ptchs_last_layer[np.where(ptchs_last_layer_softmax[:, ptchs_last_layer_softmax.shape[1]//2 + args.patch_size//2] > 0.8)[0], :]
+            logging.info("Number of active patches in TD subject " + subject_name + ": " + str(actives_ptchs_last_layer.shape[0]))
+            random_indices = np.random.randint(0, actives_ptchs_last_layer.shape[0], 100)
 
             # visualize feature maps 
             if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'features_td_' + subject_name + '.png') == False):
-                utils_vis.save_features(feats_last_layer, savepath = log_dir_sd + prefix + 'features_' + subject_name + '.png')
+                utils_vis.save_features(feats_last_layer[:, :, :, args.pca_channel], savepath = log_dir_sd + prefix + 'features_' + subject_name + '.png')
             # visualize some patches
             if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'patches_td_' + subject_name + '.png') == False):
-                utils_vis.save_patches(ptchs_last_layer,
-                                    savepath = log_dir_sd + prefix + 'patches_td_' + subject_name + '.png',
-                                    ids = random_indices,
-                                    nc = 10,
-                                    nr = 10,
-                                    psize = args.patch_size)
+                utils_vis.save_patches(actives_ptchs_last_layer,
+                                       savepath = log_dir_sd + prefix + 'patches_td_' + subject_name + '.png',
+                                       ids = random_indices,
+                                       nc = 10,
+                                       nr = 10,
+                                       psize = args.patch_size)
 
             logging.info("Finding latent representation of TD patches:")
-            td_patches_this_sub_latent = pca.transform(ptchs_last_layer)
+            td_patches_this_sub_latent = pca.transform(actives_ptchs_last_layer)
             logging.info("size of latent representation of TD patches: " + str(td_patches_this_sub_latent.shape))
 
             # compute kdes for each latent dimension for this TD subject
@@ -387,7 +444,6 @@ def main():
                                                   z_vals,
                                                   savepath = log_dir_sd + prefix + 'kde_td_' + subject_name + 'vs_sd_subjects.png')
             
-
             # plot latent representations of SD and TD subjects
             # utils_vis.plot_scatter_pca_coefs_pairwise(ptchs_last_layer_td_latent,
             #                                           savepath = log_dir_sd + prefix + 'pca_coefs_td_' + subject_name + '_pairwise.png')
