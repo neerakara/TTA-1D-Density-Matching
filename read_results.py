@@ -25,6 +25,12 @@ parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
 parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 parser.add_argument('--KDE_Groups', type = int, default = 1) # 0 / 1
+# PCA settings
+parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
+parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
+parser.add_argument('--PCA_NUM_LATENTS', type = int, default = 10) # 5 / 10 / 50
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.1 / 0.01
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?

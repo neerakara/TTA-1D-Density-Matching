@@ -922,3 +922,47 @@ def load_testing_data_wo_preproc(test_dataset_name,
         num_rotations = 0
 
     return image_orig, labels_orig, num_rotations
+
+# ================================================================
+# ================================================================
+def print_results(fname, dataset):
+
+    with open(fname, "r") as f:
+        lines = f.readlines()
+
+    pat_id = []
+    dice = []
+
+    for count in range(2, 22):
+        line = lines[count]
+
+        if dataset == 'PROMISE':
+            pat_id.append(int(line[4:6]))
+            dice.append(float(line[46:46+line[46:].find(',')]))
+        elif dataset == 'USZ':
+            pat_id.append(int(line[6:line.find(':')]))
+            line = line[line.find(':') + 39 : ]
+            dice.append(float(line[:line.find(',')]))
+
+    pat_id = np.array(pat_id)
+    dice = np.array(dice)
+    results = np.stack((pat_id, dice))
+    sorted_results = np.stack((np.sort(results[0,:]), results[1, np.argsort(results[0,:])]))
+
+    # ==================================================================
+    # sort
+    # ==================================================================
+    print('========== sorted results ==========')
+    if dataset == 'PROMISE':
+        for c in range(1, sorted_results.shape[1]):
+            print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
+            if c == 9:
+                print(str(sorted_results[0,0]) + ',' + str(sorted_results[1,0]))
+
+    elif dataset == 'USZ':
+        for c in range(0, sorted_results.shape[1]):
+            print(str(sorted_results[0,c]) + ',' + str(sorted_results[1,c]))
+
+    print('====================================')
+    print(lines[31])
+    print('====================================')

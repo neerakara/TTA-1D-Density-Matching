@@ -42,11 +42,13 @@ parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
 parser.add_argument('--PCA_NUM_LATENTS', type = int, default = 10) # 5 / 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.1 / 0.01
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
-parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
+parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL (All moments via KDE)
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
+parser.add_argument('--KL_ORDER', default = "td_vs_sd") # sd_vs_td / td_vs_sd
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8
@@ -122,6 +124,10 @@ if args.TTA_or_SFDA == 'TTA':
     test_image = imts[subject_id_start_slice:subject_id_end_slice,:,:]  
     test_image_gt = gtts[subject_id_start_slice:subject_id_end_slice,:,:]  
     test_image_gt = test_image_gt.astype(np.uint8)
+
+    # For this test subject, determine if the pre-processing cropped out some area or padded zeros
+    # If zeros were padded, determine the amount of padding (so that KDE computations can ignore this)
+    
 
 elif args.TTA_or_SFDA == 'SFDA':
     if args.test_dataset == 'USZ':
@@ -245,7 +251,11 @@ with tf.Graph().as_default():
         # =================================
         # Compute KL divergence between Gaussians
         # =================================
-        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(td_var / sd_var_pl) + (sd_var_pl + (sd_mu_pl - td_mu)**2) / td_var)
+        loss_gaussian_kl_op = utils_kde.compute_kl_between_gaussian(sd_mu_pl,
+                                                                    sd_var_pl,
+                                                                    td_mu,
+                                                                    td_var,
+                                                                    order = args.KL_ORDER)
 
         # =================================
         # Total loss
@@ -330,9 +340,9 @@ with tf.Graph().as_default():
         # ================================================================
         # compute the TTA loss - add ops for all losses and select based on the argument
         # ================================================================
-        loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_pdf_g1_pl, td_pdfs_g1)
-        loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_pdf_g2_pl, td_pdfs_g2)
-        loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_pdf_g3_pl, td_pdfs_g3)
+        loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_pdf_g1_pl, td_pdfs_g1, order = args.KL_ORDER)
+        loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_pdf_g2_pl, td_pdfs_g2, order = args.KL_ORDER)
+        loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_pdf_g3_pl, td_pdfs_g3, order = args.KL_ORDER)
 
         # ================================================================
         # PCA
@@ -356,6 +366,8 @@ with tf.Graph().as_default():
         z_pdf_pl = tf.placeholder(tf.float32, shape = [101], name = 'z_pdfs') # shape [num_points_along_intensity_range]
         # placeholder for sd KDEs of latents
         kde_latents_sd_pl = tf.placeholder(tf.float32, shape = [160, 101], name = 'kde_latents_sd') # shape [num_channels*pca_latent_dim, num_points_along_intensity_range]
+        # placeholder for weight of pca kde matching loss
+        lambda_pca_pl = tf.placeholder(tf.float32, shape = [], name = 'lambda_pca') # shape [1]
 
         # Compute KDE for each channel of features
         for c in range(features_td.shape[-1]):
@@ -386,14 +398,14 @@ with tf.Graph().as_default():
                                                               args.PCA_KDE_ALPHA)
 
         # KL loss between SD and TD KDEs
-        loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl, kde_latents_td)
+        loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl, kde_latents_td, order = args.KL_ORDER)
         
         # ==================================
         # Select loss to be minimized according to the arguments
         # ==================================
         # match full PDFs with KL loss
         if args.match_moments == 'All_KL': 
-            loss_op = loss_all_kl_g1_op + loss_all_kl_g2_op + loss_all_kl_g3_op + 0.1 * loss_pca_kl_op
+            loss_op = loss_all_kl_g1_op + loss_all_kl_g2_op + loss_all_kl_g3_op + lambda_pca_pl * loss_pca_kl_op
                 
         # ================================================================
         # add losses to tensorboard
@@ -692,7 +704,8 @@ with tf.Graph().as_default():
                            pca_components_pl: pca_pcs,
                            pca_variance_pl: pca_vars,
                            z_pdf_pl: z_values,
-                           kde_latents_sd_pl: sd_pdf_latents_this_step}
+                           kde_latents_sd_pl: sd_pdf_latents_this_step,
+                           lambda_pca_pl: args.PCA_LAMBDA}
 
             elif args.KDE == 0:      
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),

@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
@@ -31,6 +31,12 @@ parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
 parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
 parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 parser.add_argument('--KDE_Groups', type = int, default = 1) # 0 / 1
+# PCA settings
+parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
+parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
+parser.add_argument('--PCA_NUM_LATENTS', type = int, default = 10) # 5 / 10 / 50
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.1 / 0.01
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
@@ -444,6 +450,11 @@ def main():
     results_file.write("HSD Mean, std. deviation over labels over all subjects: " + str(np.round(np.mean(hsd_per_label_per_subject), 3)) + ", " + str(np.round(np.std(hsd_per_label_per_subject), 3)) + "\n")
     results_file.write("================================== \n") 
     results_file.close()
+
+    # ==================
+    # read results and print them out
+    # ==================
+    utils.print_results(results_filename + '.txt', test_dataset_name)
         
 # ==================================================================
 # ==================================================================

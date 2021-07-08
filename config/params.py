@@ -157,9 +157,10 @@ def make_tta_exp_name(args):
     elif args.KDE == 0:
         exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
     
-    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / Full_KL / Full_CF_L2    
+    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / All_KL
+    exp_str = exp_str + '_' + args.KL_ORDER # sd_vs_td / td_vs_sd
 
-    exp_str = exp_str + '/PCA' + str(args.PCA_PSIZE)
+    exp_str = exp_str + '/PCA' + str(args.PCA_PSIZE) + '_lambda' + str(args.PCA_LAMBDA)
 
     exp_str = exp_str + '/Vars' + args.tta_vars 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
