@@ -168,6 +168,7 @@ def make_tta_exp_name(args):
     exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
     
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
+    exp_str = exp_str + '_ignore_0pad'
     
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule

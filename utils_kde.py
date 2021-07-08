@@ -5,13 +5,44 @@ import logging
 
 # ==============================================
 # ==============================================
+def determine_zero_padding_this_depth(n, dx, dy):
+
+    if n==1 or n==7 or n==8:
+        dx_ = dx
+        dy_ = dy
+
+    elif n==2 or n==6:
+        dx_ = dx // 2
+        dy_ = dy // 2
+
+    elif n==3 or n==5:
+        dx_ = dx // 4
+        dy_ = dy // 4
+
+    elif n==4:
+        dx_ = dx // 8
+        dy_ = dy // 8
+    
+    return dx_, dy_
+        
+# ==============================================
+# ==============================================
 def compute_first_two_moments(features,
                               feature_subsampling_factor,
                               features_randomized,
-                              cov = 'DIAG'):
+                              cov = 'DIAG',
+                              block_num = 1,
+                              deltax = 0,
+                              deltay = 0):
+
+    # discard zero padding
+    if deltax != 0 or deltay != 0:
+        dx, dy = determine_zero_padding_this_depth(block_num, deltax, deltay)
+        features = tf.gather(features, tf.range(start=dx, limit=tf.shape(features)[1]-dx, delta=1), axis=1)
+        features = tf.gather(features, tf.range(start=dy, limit=tf.shape(features)[2]-dy, delta=1), axis=2)
 
     # Reshape to bring all those axes together where you want to take moments across
-    features = tf.reshape(features, (-1, features.shape[-1]))
+    features = tf.reshape(features, (-1, tf.shape(features)[-1]))
 
     # Subsample the feature maps to relieve the memory constraint and enable higher batch sizes
     if feature_subsampling_factor != 1:
@@ -22,9 +53,9 @@ def compute_first_two_moments(features,
         elif features_randomized == 1:
             # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
             # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
-            random_indices = tf.random.uniform(shape=[features.shape[0].value // feature_subsampling_factor],
+            random_indices = tf.random.uniform(shape=[tf.shape(features)[0] // feature_subsampling_factor],
                                                minval=0,
-                                               maxval=features.shape[0].value - 1,
+                                               maxval=tf.shape(features)[0] - 1,
                                                dtype=tf.int32)
             features = tf.gather(features, random_indices, axis=0)
 
@@ -66,10 +97,19 @@ def compute_feature_kdes(features,
                          feature_subsampling_factor,
                          features_randomized,
                          x,
-                         alpha):
+                         alpha,
+                         block_num = 1,
+                         deltax = 0,
+                         deltay = 0):
+
+    # discard zero padding
+    if deltax != 0 or deltay != 0:
+        dx, dy = determine_zero_padding_this_depth(block_num, deltax, deltay)
+        features = tf.gather(features, tf.range(start=dx, limit=tf.shape(features)[1]-dx, delta=1), axis=1)
+        features = tf.gather(features, tf.range(start=dy, limit=tf.shape(features)[2]-dy, delta=1), axis=2)
 
     # Reshape to bring all those axes together where you want to consider values as iid samples
-    features = tf.reshape(features, (-1, features.shape[-1]))
+    features = tf.reshape(features, (-1, tf.shape(features)[-1]))
 
     # for Batch size 2:
     # 1_1 (131072, 16), 1_2 (131072, 16), 2_1 (32768, 32), 2_2 (32768, 32)
@@ -84,14 +124,14 @@ def compute_feature_kdes(features,
         elif features_randomized == 1:
             # https://stackoverflow.com/questions/49734747/how-would-i-randomly-sample-pixels-in-tensorflow
             # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/gather.md
-            random_indices = tf.random.uniform(shape=[features.shape[0].value // feature_subsampling_factor],
+            random_indices = tf.random.uniform(shape=[tf.shape(features)[0] // feature_subsampling_factor],
                                                minval=0,
-                                               maxval=features.shape[0].value - 1,
+                                               maxval=tf.shape(features)[0] - 1,
                                                dtype=tf.int32)
             features = tf.gather(features, random_indices, axis=0)
 
     features = tf.tile(tf.expand_dims(features, 0), multiples = [x.shape[0], 1, 1])
-    x_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x, -1), -1), multiples = [1, features.shape[1], features.shape[2]])
+    x_tmp = tf.tile(tf.expand_dims(tf.expand_dims(x, -1), -1), multiples = [1, tf.shape(features)[1], tf.shape(features)[2]])
 
     # the 3 dimensions are : 
     # 1. the intensity values where the pdf is evaluated,

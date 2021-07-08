@@ -48,7 +48,7 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL (All moments via KDE)
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
-parser.add_argument('--KL_ORDER', default = "td_vs_sd") # sd_vs_td / td_vs_sd
+parser.add_argument('--KL_ORDER', default = "sd_vs_td") # sd_vs_td / td_vs_sd
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8
@@ -98,7 +98,11 @@ loaded_test_data = utils.load_testing_data(args.test_dataset,
 
 imts = loaded_test_data[0]
 gtts = loaded_test_data[1]
+orig_data_res_x = loaded_test_data[2]
+orig_data_res_y = loaded_test_data[3]
 orig_data_res_z = loaded_test_data[4]
+orig_data_siz_x = loaded_test_data[5]
+orig_data_siz_y = loaded_test_data[6]
 orig_data_siz_z = loaded_test_data[7]
 name_test_subjects = loaded_test_data[8]
 num_test_subjects = loaded_test_data[9]
@@ -127,7 +131,14 @@ if args.TTA_or_SFDA == 'TTA':
 
     # For this test subject, determine if the pre-processing cropped out some area or padded zeros
     # If zeros were padded, determine the amount of padding (so that KDE computations can ignore this)
-    
+    nxhat = orig_data_siz_x[sub_num] * orig_data_res_x[sub_num] / target_resolution[0]
+    nyhat = orig_data_siz_y[sub_num] * orig_data_res_y[sub_num] / target_resolution[1]
+    if args.test_dataset == 'USZ':
+        padding_y = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
+        padding_x = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
+    else:
+        padding_x = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
+        padding_y = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
 
 elif args.TTA_or_SFDA == 'SFDA':
     if args.test_dataset == 'USZ':
@@ -207,6 +218,12 @@ with tf.Graph().as_default():
         tta_vars = normalization_vars
 
     # ================================================================
+    # placeholders for indicating amount of zero padding in this test image
+    # ================================================================
+    delta_x_pl = tf.placeholder(tf.int32, shape = [], name='zero_padding_x_pl')
+    delta_y_pl = tf.placeholder(tf.int32, shape = [], name='zero_padding_y_pl')
+
+    # ================================================================
     # Gaussian matching without computing KDE
     # ================================================================
     if args.KDE == 0:
@@ -231,7 +248,10 @@ with tf.Graph().as_default():
                 # Compute the first two moments for all channels of this layer
                 this_layer_means, this_layer_variances = utils_kde.compute_first_two_moments(features,
                                                                                              args.feature_subsampling_factor,
-                                                                                             args.features_randomized)
+                                                                                             args.features_randomized,
+                                                                                             conv_block,
+                                                                                             delta_x_pl,
+                                                                                             delta_y_pl)
                 td_means = tf.concat([td_means, this_layer_means], 0)
                 td_variances = tf.concat([td_variances, this_layer_variances], 0)
 
@@ -240,7 +260,10 @@ with tf.Graph().as_default():
             features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0')
             this_layer_means, this_layer_variances = utils_kde.compute_first_two_moments(features,
                                                                                          args.feature_subsampling_factor,
-                                                                                         args.features_randomized)
+                                                                                         args.features_randomized,
+                                                                                         8,
+                                                                                         delta_x_pl,
+                                                                                         delta_y_pl)
             td_means = tf.concat([td_means, this_layer_means], 0)
             td_variances = tf.concat([td_variances, this_layer_variances], 0)
 
@@ -312,7 +335,10 @@ with tf.Graph().as_default():
                                                                            args.feature_subsampling_factor,
                                                                            args.features_randomized,
                                                                            x_pdf_g1_pl,
-                                                                           alpha_pl)
+                                                                           alpha_pl,
+                                                                           conv_block,
+                                                                           delta_x_pl,
+                                                                           delta_y_pl)
                 td_pdfs_g1 = tf.concat([td_pdfs_g1, channel_pdf_this_layer_td], 0)
         # Ignore the zeroth column that was added at the start of the loop
         td_pdfs_g1 = td_pdfs_g1[1:, :]
@@ -325,7 +351,10 @@ with tf.Graph().as_default():
                                                     args.feature_subsampling_factor,
                                                     args.features_randomized,
                                                     x_pdf_g2_pl,
-                                                    alpha_pl)
+                                                    alpha_pl,
+                                                    7,
+                                                    delta_x_pl,
+                                                    delta_y_pl)
 
         # ==================================
         # GROUP 3 (logits)
@@ -335,7 +364,10 @@ with tf.Graph().as_default():
                                                     args.feature_subsampling_factor,
                                                     args.features_randomized,
                                                     x_pdf_g3_pl,
-                                                    alpha_pl)
+                                                    alpha_pl,
+                                                    8,
+                                                    delta_x_pl,
+                                                    delta_y_pl)
 
         # ================================================================
         # compute the TTA loss - add ops for all losses and select based on the argument
@@ -535,6 +567,7 @@ with tf.Graph().as_default():
         x_values_g1 = np.arange(kde_g1_params[0], kde_g1_params[1] + kde_g1_params[2], kde_g1_params[2])
         sd_pdfs_fname_g1 = exp_config.make_sd_pdf_name(path_to_model, b_size_compute_sd_pdfs, args, 1, kde_g1_params)
         # [num_subjects, num_channels, num_x_points]
+        # TODO: Pass zero padding information while computing the SD KDEs
         pdfs_sd_g1 = utils_kde.compute_sd_pdfs(sd_pdfs_fname_g1,
                                                args.train_dataset,
                                                imtr,
@@ -705,7 +738,9 @@ with tf.Graph().as_default():
                            pca_variance_pl: pca_vars,
                            z_pdf_pl: z_values,
                            kde_latents_sd_pl: sd_pdf_latents_this_step,
-                           lambda_pca_pl: args.PCA_LAMBDA}
+                           lambda_pca_pl: args.PCA_LAMBDA,
+                           delta_x_pl: padding_x,
+                           delta_y_pl: padding_y}
 
             elif args.KDE == 0:      
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
@@ -891,9 +926,9 @@ with tf.Graph().as_default():
                     if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
 
                         batch_tmp = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
-                        pdfs_g1_this_batch = sess.run(td_pdfs_g1, feed_dict={images_pl: batch_tmp, x_pdf_g1_pl: x_values_g1, alpha_pl: args.alpha})
-                        pdfs_g2_this_batch = sess.run(td_pdfs_g2, feed_dict={images_pl: batch_tmp, x_pdf_g2_pl: x_values_g2, alpha_pl: args.alpha})
-                        pdfs_g3_this_batch = sess.run(td_pdfs_g3, feed_dict={images_pl: batch_tmp, x_pdf_g3_pl: x_values_g3, alpha_pl: args.alpha})
+                        pdfs_g1_this_batch = sess.run(td_pdfs_g1, feed_dict={images_pl: batch_tmp, x_pdf_g1_pl: x_values_g1, alpha_pl: args.alpha, delta_x_pl: padding_x, delta_y_pl: padding_y})
+                        pdfs_g2_this_batch = sess.run(td_pdfs_g2, feed_dict={images_pl: batch_tmp, x_pdf_g2_pl: x_values_g2, alpha_pl: args.alpha, delta_x_pl: padding_x, delta_y_pl: padding_y})
+                        pdfs_g3_this_batch = sess.run(td_pdfs_g3, feed_dict={images_pl: batch_tmp, x_pdf_g3_pl: x_values_g3, alpha_pl: args.alpha, delta_x_pl: padding_x, delta_y_pl: padding_y})
                         pdfs_latents_this_batch = sess.run(kde_latents_td, feed_dict={images_pl: batch_tmp,
                                                                                       z_pdf_pl: z_values,
                                                                                       pca_mean_features_pl: pca_means,
