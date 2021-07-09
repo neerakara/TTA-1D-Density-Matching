@@ -37,6 +37,7 @@ parser.add_argument('--adaBN', type = int, default = 0) # 0 / 1
 parser.add_argument('--KDE', type = int, default = 1) # 0 / 1
 parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 parser.add_argument('--KDE_Groups', type = int, default = 1) # 0 / 1
+parser.add_argument('--IGNORE_PADDING', type = int, default = 1) # 0 / 1
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
@@ -129,16 +130,20 @@ if args.TTA_or_SFDA == 'TTA':
     test_image_gt = gtts[subject_id_start_slice:subject_id_end_slice,:,:]  
     test_image_gt = test_image_gt.astype(np.uint8)
 
-    # For this test subject, determine if the pre-processing cropped out some area or padded zeros
-    # If zeros were padded, determine the amount of padding (so that KDE computations can ignore this)
-    nxhat = orig_data_siz_x[sub_num] * orig_data_res_x[sub_num] / target_resolution[0]
-    nyhat = orig_data_siz_y[sub_num] * orig_data_res_y[sub_num] / target_resolution[1]
-    if args.test_dataset == 'USZ':
-        padding_y = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
-        padding_x = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
+    if args.IGNORE_PADDING == 1:
+        # For this test subject, determine if the pre-processing cropped out some area or padded zeros
+        # If zeros were padded, determine the amount of padding (so that KDE computations can ignore this)
+        nxhat = orig_data_siz_x[sub_num] * orig_data_res_x[sub_num] / target_resolution[0]
+        nyhat = orig_data_siz_y[sub_num] * orig_data_res_y[sub_num] / target_resolution[1]
+        if args.test_dataset == 'USZ':
+            padding_y = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
+            padding_x = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
+        else:
+            padding_x = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
+            padding_y = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
     else:
-        padding_x = np.maximum(0, test_image.shape[1] - nxhat.astype(np.uint16)) // 2
-        padding_y = np.maximum(0, test_image.shape[2] - nyhat.astype(np.uint16)) // 2
+        padding_x = 0
+        padding_y = 0
 
 elif args.TTA_or_SFDA == 'SFDA':
     if args.test_dataset == 'USZ':
@@ -844,7 +849,9 @@ with tf.Graph().as_default():
                                             test_image,
                                             image_normalized,
                                             label_predicted,
-                                            test_image_gt)
+                                            test_image_gt,
+                                            padding_x,
+                                            padding_y)
 
             # ===========================
             # Display 7_2 layer features

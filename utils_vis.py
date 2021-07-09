@@ -273,10 +273,12 @@ def write_image_summaries(step,
                           x,
                           xn,
                           y,
-                          y_gt):
+                          y_gt,
+                          dx = 0,
+                          dy = 0):
     
     # stitch images
-    stitched_image = stitch_images(x, xn, y, y_gt)
+    stitched_image = stitch_images(x, xn, y, y_gt, dx, dy)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -297,17 +299,19 @@ def normalize_and_cast_to_uint8(x):
 # ================================================================
 # function to stitch all images of a particular iteration together
 # ================================================================
-def stitch_images(x, xn, y, y_gt):
+def stitch_images(x, xn, y, y_gt, dx, dy):
         
     nx, ny = x.shape[1:]
+    nx = nx - 2*dx
+    ny = ny - 2*dy
     stitched_image = np.zeros((4*nx, 5*ny), dtype = np.float32)
     vis_ids = np.linspace(0, x.shape[0], 9, dtype=np.uint8)[2:7]
 
     for i in range(5):
-        sx = 0; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = x[vis_ids[i], :, :]
-        sx = 1; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = xn[vis_ids[i], :, :]
-        sx = 2; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y[vis_ids[i], :, :]
-        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[vis_ids[i], :, :]
+        sx = 0; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = x[vis_ids[i], dx:x.shape[1]-dx, dy:x.shape[2]-dy]
+        sx = 1; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = xn[vis_ids[i], dx:xn.shape[1]-dx, dy:xn.shape[2]-dy]
+        sx = 2; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y[vis_ids[i], dx:y.shape[1]-dx, dy:y.shape[2]-dy]
+        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[vis_ids[i], dx:y_gt.shape[1]-dx, dy:y_gt.shape[2]-dy]
     
     return stitched_image
 

@@ -42,7 +42,7 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
-parser.add_argument('--KL_ORDER', default = "td_vs_sd") # sd_vs_td / td_vs_sd
+parser.add_argument('--KL_ORDER', default = "sd_vs_td") # sd_vs_td / td_vs_sd
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
