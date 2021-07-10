@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "PROMISE") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
+parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
@@ -44,11 +44,13 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 # PCA settings
-parser.add_argument('--patch_size', type = int, default = 16) # 32 / 64 / 128
+parser.add_argument('--patch_size', type = int, default = 32) # 32 / 64 / 128
 parser.add_argument('--pca_stride', type = int, default = 8) # 64 / 128
 parser.add_argument('--pca_layer', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--pca_kde_alpha', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
+parser.add_argument('--PCA_TR_NUM', type = int, default = 15) # 10 / 15
+# The PCA will be trained on the first 'PCA_TR_NUM' images from the CNN training dataset
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
@@ -94,6 +96,13 @@ def main():
     imtr, gttr, orig_data_siz_z_train, num_train_subjects = utils.load_training_data(args.train_dataset,
                                                                                      image_size,
                                                                                      target_resolution)
+
+    # ===================================
+    # load validation images
+    # ===================================
+    imvl, gtvl, orig_data_siz_z_val, num_val_subjects = utils.load_validation_data(args.train_dataset,
+                                                                                   image_size,
+                                                                                   target_resolution)
      
     # ===================================
     # read the test images
@@ -162,6 +171,13 @@ def main():
                                                     psize = args.patch_size,
                                                     stride = args.pca_stride)
 
+        # Combine the softmax scores into a map of foreground probabilities and use this to select active patches
+        features_fg_probs = tf.expand_dims(tf.math.reduce_max(softmax[:, :, :, 1:], axis=-1), axis=-1)
+        patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
+                                                     channel = 0, 
+                                                     psize = args.patch_size,
+                                                     stride = args.pca_stride)        
+
         # ================================================================
         # divide the vars into segmentation network and normalization network
         # ================================================================
@@ -222,7 +238,7 @@ def main():
         prefix = 'pca/p' + str(args.patch_size) 
         prefix = prefix + 's' + str(args.pca_stride)
         prefix = prefix + '_dim' + str(args.PCA_LATENT_DIM)
-        prefix = prefix + '_' + args.pca_layer + '/'
+        prefix = prefix + '_' + args.pca_layer + '_active_all_fg_numtr' + str(args.PCA_TR_NUM) + '/'
         if not tf.gfile.Exists(log_dir_sd + prefix):
             tf.gfile.MakeDirs(log_dir_sd + prefix)
 
@@ -234,19 +250,19 @@ def main():
         else: # 'logits' / 'softmax'
             num_channels = nlabels
 
-        for channel in range(2, num_channels):
+        for channel in range(num_channels):
 
             logging.info("==================================")
             logging.info("Channel " + str(channel))
 
             # init arrays to store features and patches of different subjects
-            sd_features = np.zeros([orig_data_siz_z_train.shape[0], image_size[0], image_size[1]]) 
+            sd_features = np.zeros([args.PCA_TR_NUM, image_size[0], image_size[1]]) 
             sd_patches = np.zeros([1,args.patch_size*args.patch_size])
             sd_patches_active = np.zeros([1,args.patch_size*args.patch_size])
 
             # go through all sd subjects
             # extract features and patches
-            for train_sub_num in range(orig_data_siz_z_train.shape[0]):
+            for train_sub_num in range(args.PCA_TR_NUM):
                 train_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
                 feed_dict={images_pl: np.expand_dims(train_image, axis=-1), pca_channel_pl: channel}
                 if args.pca_layer == 'layer_7_2':
@@ -259,8 +275,8 @@ def main():
                     feats_last_layer = sess.run(features_softmax, feed_dict=feed_dict)
                     ptchs_last_layer = sess.run(patches_softmax, feed_dict=feed_dict)
                 
-                # get corresponding patches of the softmax of class 2
-                ptchs_last_layer_softmax = sess.run(patches_softmax, feed_dict=feed_dict)
+                # get corresponding patches of the foreground probability values
+                ptchs_fg_probs = sess.run(patches_fg_probs, feed_dict=feed_dict)
 
                 # collect features from the central slice for vis
                 sd_features[train_sub_num, :, :] = feats_last_layer[feats_last_layer.shape[0]//2, :, :, channel]
@@ -270,9 +286,9 @@ def main():
                 sd_patches = np.concatenate((sd_patches, ptchs_last_layer), axis=0)
 
                 # extract 'active' patches -> ones for which the softmax of class two has a high value in the central pixel
-                actives_ptchs_last_layer = ptchs_last_layer[np.where(ptchs_last_layer_softmax[:, (args.patch_size * (args.patch_size + 1))//2] > 0.8)[0], :]
-                logging.info("Number of active patches in SD subject " + str(train_sub_num+1) + ": " + str(actives_ptchs_last_layer.shape[0]))
-                sd_patches_active = np.concatenate((sd_patches_active, actives_ptchs_last_layer), axis=0)
+                active_ptchs_last_layer = ptchs_last_layer[np.where(ptchs_fg_probs[:, (args.patch_size * (args.patch_size + 1))//2] > 0.8)[0], :]
+                logging.info("Number of active patches in SD subject " + str(train_sub_num+1) + ": " + str(active_ptchs_last_layer.shape[0]))
+                sd_patches_active = np.concatenate((sd_patches_active, active_ptchs_last_layer), axis=0)
 
             # remove dummy patch added in the front, before the loop over all sd subjects
             sd_patches = np.array(sd_patches[1:,:])
@@ -328,31 +344,134 @@ def main():
                 logging.info("Visualizing principal components..")
                 utils_vis.visualize_principal_components(pca.components_, log_dir_sd + prefix + 'pcs_c' + str(channel) + '.png', args.patch_size, nc = 2, nr = 2)
 
-            # plot scatter plots of pairs of latent dimensions for patches of each SD subject      
-            logging.info("Visualizing pairwise scatter plots of latent dimensions of individual SD subjects..")
-            kdes_all_sd_subjects = []
-            for train_sub_num in range(orig_data_siz_z_train.shape[0]):
-                logging.info("SD subject " + str(train_sub_num+1))
-                train_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-                feed_dict={images_pl: np.expand_dims(train_image, axis=-1), pca_channel_pl: channel}
-                sd_patches_this_sub = sess.run(patches_last_layer, feed_dict = feed_dict)
-                sd_patches_this_sub_softmax = sess.run(patches_softmax, feed_dict=feed_dict)
-                sd_active_patches_this_sub = sd_patches_this_sub[np.where(sd_patches_this_sub_softmax[:, (args.patch_size * (args.patch_size + 1))//2] > 0.8)[0], :]
-                sd_active_patches_this_sub_latent = pca.transform(sd_active_patches_this_sub)
-                logging.info("Min latent value: " + str(np.round(np.min(sd_active_patches_this_sub_latent), 2)))
-                logging.info("Max latent value: " + str(np.round(np.max(sd_active_patches_this_sub_latent), 2)))
+            # Compute KDEs of each latent dimension for patches of each SD training subject      
+            logging.info("Computing KDEs in each latent dimension for individual SD training subjects..")
+            num_tr_slices = np.sum(orig_data_siz_z_train[:args.PCA_TR_NUM])
+            kdes_all_sd_tr_subs, z_vals, feats_tr, act_pats_tr = utils_kde.compute_latent_kdes_subjectwise(images = imtr[:num_tr_slices, :, :],
+                                                                                                 image_size = image_size,
+                                                                                                 image_depths = orig_data_siz_z_train[:args.PCA_TR_NUM],
+                                                                                                 image_placeholder = images_pl,
+                                                                                                 channel_placeholder = pca_channel_pl,
+                                                                                                 channel_num = channel,
+                                                                                                 features = features_last_layer,
+                                                                                                 patches = patches_last_layer,
+                                                                                                 fg_probs = patches_fg_probs,
+                                                                                                 psize = args.patch_size,
+                                                                                                 threshold = 0.8,
+                                                                                                 learned_pca = pca,
+                                                                                                 alpha_kde = args.pca_kde_alpha,
+                                                                                                 sess = sess,
+                                                                                                 savepath = log_dir_sd + prefix + 'kde_alpha' + str(args.pca_kde_alpha) + '_c' + str(channel) + '.npy')
+            
+            # Compute KDEs for the images that were part of the CNN training, but not part of the PCA training
+            if args.PCA_TR_NUM < orig_data_siz_z_train.shape[0]:
+                kdes_all_sd_tt_subs, z_vals, feats_tt, act_pats_tt = utils_kde.compute_latent_kdes_subjectwise(images = imtr[num_tr_slices:, :, :],
+                                                                                                    image_size = image_size,
+                                                                                                    image_depths = orig_data_siz_z_train[args.PCA_TR_NUM:],
+                                                                                                    image_placeholder = images_pl,
+                                                                                                    channel_placeholder = pca_channel_pl,
+                                                                                                    channel_num = channel,
+                                                                                                    features = features_last_layer,
+                                                                                                    patches = patches_last_layer,
+                                                                                                    fg_probs = patches_fg_probs,
+                                                                                                    psize = args.patch_size,
+                                                                                                    threshold = 0.8,
+                                                                                                    learned_pca = pca,
+                                                                                                    alpha_kde = args.pca_kde_alpha,
+                                                                                                    sess = sess)
+            else:
+                kdes_all_sd_tt_subs = kdes_all_sd_tr_subs
+                feats_tt = feats_tr
+                act_pats_tt = act_pats_tr
 
-                # compute dimension wise KDE for this subject
-                kdes_this_subject, z_vals = utils_kde.compute_pca_latent_kdes(sd_active_patches_this_sub_latent, args.pca_kde_alpha)
-                kdes_all_sd_subjects.append(kdes_this_subject)
 
-            kdes_all_sd_subjects = np.array(kdes_all_sd_subjects)
-            kde_path = log_dir_sd + prefix + 'kde_alpha' + str(args.pca_kde_alpha) + '_c' + str(channel) + '.npy'
-            np.save(kde_path, kdes_all_sd_subjects)
+            # KDEs of images that were neither part of the CNN training, nor the PCA training, but come from the same distribution at the SD images
+            kdes_all_sd_vl_subs, z_vals, feats_vl, act_pats_vl = utils_kde.compute_latent_kdes_subjectwise(images = imvl,
+                                                                                                 image_size = image_size,
+                                                                                                 image_depths = orig_data_siz_z_val,
+                                                                                                 image_placeholder = images_pl,
+                                                                                                 channel_placeholder = pca_channel_pl,
+                                                                                                 channel_num = channel,
+                                                                                                 features = features_last_layer,
+                                                                                                 patches = patches_last_layer,
+                                                                                                 fg_probs = patches_fg_probs,
+                                                                                                 psize = args.patch_size,
+                                                                                                 threshold = 0.8,
+                                                                                                 learned_pca = pca,
+                                                                                                 alpha_kde = args.pca_kde_alpha,
+                                                                                                 sess = sess)
 
-            utils_vis.plot_kdes_for_sd_latents(kdes_all_sd_subjects,
-                                               z_vals,
-                                               savepath = log_dir_sd + prefix + 'kde_c' + str(channel) + '.png')
+            # KDEs of images from TD
+            kdes_all_td_ts_subs, z_vals, feats_ts, act_pats_ts = utils_kde.compute_latent_kdes_subjectwise(images = imts,
+                                                                                                 image_size = image_size,
+                                                                                                 image_depths = orig_data_siz_z,
+                                                                                                 image_placeholder = images_pl,
+                                                                                                 channel_placeholder = pca_channel_pl,
+                                                                                                 channel_num = channel,
+                                                                                                 features = features_last_layer,
+                                                                                                 patches = patches_last_layer,
+                                                                                                 fg_probs = patches_fg_probs,
+                                                                                                 psize = args.patch_size,
+                                                                                                 threshold = 0.8,
+                                                                                                 learned_pca = pca,
+                                                                                                 alpha_kde = args.pca_kde_alpha,
+                                                                                                 sess = sess)
+
+            logging.info('features in training (CNN) and training (PCA): ' + str(feats_tr.shape))
+            logging.info('features in training (CNN), but testing (PCA): ' + str(feats_tt.shape))
+            logging.info('features in validation (5 subs): ' + str(feats_vl.shape))
+            logging.info('features in testing (20 subs): ' + str(feats_ts.shape))
+
+            utils_vis.save_features(feats_tr, savepath = log_dir_sd + prefix + 'features_tr_c' + str(channel) + '.png')
+            utils_vis.save_features(feats_tt, savepath = log_dir_sd + prefix + 'features_tt_c' + str(channel) + '.png')
+            utils_vis.save_features(feats_vl, savepath = log_dir_sd + prefix + 'features_vl_c' + str(channel) + '.png')
+            utils_vis.save_features(feats_ts, savepath = log_dir_sd + prefix + 'features_ts_c' + str(channel) + '.png')
+
+            logging.info('number of active patches in training (CNN) and training (PCA): ' + str(act_pats_tr.shape))
+            logging.info('number of active patches in training (CNN), but testing (PCA): ' + str(act_pats_tt.shape))
+            logging.info('number of active patches in validation (5 subs): ' + str(act_pats_vl.shape))
+            logging.info('number of active patches in testing (20 subs): ' + str(act_pats_ts.shape))
+
+            utils_vis.save_patches(act_pats_tr,
+                                   savepath = log_dir_sd + prefix + 'act_pats_tr_c' + str(channel) + '.png',
+                                   ids = np.random.randint(0, act_pats_tr.shape[0], 25),
+                                   nc = 5,
+                                   nr = 5,
+                                   psize = args.patch_size)
+            utils_vis.save_patches(act_pats_tt,
+                                   savepath = log_dir_sd + prefix + 'act_pats_tt_c' + str(channel) + '.png',
+                                   ids = np.random.randint(0, act_pats_tt.shape[0], 25),
+                                   nc = 5,
+                                   nr = 5,
+                                   psize = args.patch_size)
+            utils_vis.save_patches(act_pats_vl,
+                                   savepath = log_dir_sd + prefix + 'act_pats_vl_c' + str(channel) + '.png',
+                                   ids = np.random.randint(0, act_pats_vl.shape[0], 25),
+                                   nc = 5,
+                                   nr = 5,
+                                   psize = args.patch_size)
+            utils_vis.save_patches(act_pats_ts,
+                                   savepath = log_dir_sd + prefix + 'act_pats_ts_c' + str(channel) + '.png',
+                                   ids = np.random.randint(0, act_pats_ts.shape[0], 25),
+                                   nc = 5,
+                                   nr = 5,
+                                   psize = args.patch_size)
+
+            # compute average KL between across all pairs of KDEs
+            avg_kl_tr_tt = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_tt_subs)
+            avg_kl_tr_vl = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_vl_subs)
+            avg_kl_tr_ts = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_td_ts_subs)
+
+            # plot KDEs of SD train, SD val and TD test subjects
+            utils_vis.plot_kdes_for_latents(kdes_all_sd_tr_subs,
+                                            kdes_all_sd_tt_subs,
+                                            kdes_all_sd_vl_subs,
+                                            kdes_all_td_ts_subs,
+                                            z_vals,
+                                            log_dir_sd + prefix + 'kde_c' + str(channel) + '.png',
+                                            avg_kl_tr_tt,
+                                            avg_kl_tr_vl,
+                                            avg_kl_tr_ts)
 
         # ================================================================
         # Close the session

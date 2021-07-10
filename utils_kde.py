@@ -433,3 +433,79 @@ def compute_pca_latent_kdes(latents, alpha):
         kdes_this_subject.append(kde_this_dim)
 
     return np.array(kdes_this_subject), z_vals
+
+# ==================================
+# ==================================
+def compute_latent_kdes_subjectwise(images,
+                                    image_size,
+                                    image_depths,
+                                    image_placeholder,
+                                    channel_placeholder,
+                                    channel_num,
+                                    features,
+                                    patches,
+                                    fg_probs,
+                                    psize,
+                                    threshold,
+                                    learned_pca,
+                                    alpha_kde,
+                                    sess,
+                                    savepath = ''):
+
+    actpats_allsubs = np.zeros([1, psize*psize])
+    feats_allsubs = np.zeros([image_depths.shape[0], image_size[0], image_size[1]]) 
+    kdes_allsubs = []
+
+    for sub_num in range(image_depths.shape[0]):
+        logging.info("Subject " + str(sub_num+1))
+        # extract one subject
+        image = images[np.sum(image_depths[:sub_num]) : np.sum(image_depths[:sub_num+1]),:,:]
+        feed_dict={image_placeholder: np.expand_dims(image, axis=-1),
+                   channel_placeholder: channel_num}
+        # extract features from layer 7_2 for this subject
+        features_this_sub = sess.run(features, feed_dict = feed_dict)
+        feats_allsubs[sub_num, :, :] = features_this_sub[features_this_sub.shape[0]//2, :, :, channel_num]
+        # extract patches from layer 7_2 channel 'channel' for this subject
+        patches_this_sub = sess.run(patches, feed_dict = feed_dict)
+        # extract predicted fg probs for this subject
+        fg_probs_this_sub = sess.run(fg_probs, feed_dict=feed_dict)
+        # keep only 'active' patches
+        active_patches_this_sub = patches_this_sub[np.where(fg_probs_this_sub[:, (psize * (psize + 1))//2] > threshold)[0], :]
+        actpats_allsubs = np.concatenate((actpats_allsubs, active_patches_this_sub), axis=0)
+        # transform active patches to their latent representation
+        active_patches_this_sub_latent = learned_pca.transform(active_patches_this_sub)
+        # logging.info("Min latent value: " + str(np.round(np.min(active_patches_this_sub_latent), 2)))
+        # logging.info("Max latent value: " + str(np.round(np.max(active_patches_this_sub_latent), 2)))
+        # compute KDEs for each latent dimension for this subject
+        kdes_this_sub, z_vals = compute_pca_latent_kdes(active_patches_this_sub_latent, alpha_kde)
+        kdes_allsubs.append(kdes_this_sub)
+    # save the KDEs of all SD training subjects for all latent dimensions, for feature channel 'channel'.
+    kdes_allsubs = np.array(kdes_allsubs)
+    
+    if savepath != '':
+        np.save(savepath, kdes_allsubs)
+    
+    return kdes_allsubs, z_vals, feats_allsubs, np.array(actpats_allsubs[1:,:])
+
+# ==================================
+# NUMPY. Riemann integral
+# ==================================
+def compute_kl_between_kdes_numpy(sd_pdfs, # [num_subjects, num_dims, num_evals_of_each_kde]
+                                  td_pdfs, # [num_subjects, num_dims, num_evals_of_each_kde]
+                                  order = 'sd_vs_td'):
+
+    kl = 0
+
+    for i in range(sd_pdfs.shape[0]):
+        for j in range(td_pdfs.shape[0]):
+
+            sd_pdf = sd_pdfs[i, :, :]
+            td_pdf = td_pdfs[j, :, :]
+
+            if order == 'sd_vs_td':
+            # (via Riemann integral)
+                kl = kl + np.mean(np.sum(np.multiply(sd_pdf, np.log(np.divide(sd_pdf, td_pdf + 1e-5) + 1e-2)), axis = -1))
+
+    avg_kl = kl / (sd_pdfs.shape[0] * td_pdfs.shape[0])
+
+    return np.round(avg_kl, 3)

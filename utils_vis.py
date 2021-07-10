@@ -702,22 +702,80 @@ def visualize_principal_components(pcs,
 
 # ==========================================================
 # ==========================================================
-def plot_kdes_for_sd_latents(kdes_sd_subjects,
-                             z_vals,
-                             savepath,
-                             nc = 3,
-                             nr = 3):
+def plot_kdes_for_latents(kdes_sd_subjects_tr,
+                          kdes_sd_subjects_tt,
+                          kdes_sd_subjects_vl,
+                          kdes_td_subjects_ts,
+                          z_vals,
+                          savepath,
+                          kl_trtt,
+                          kl_trvl,
+                          kl_trts,
+                          nc = 3,
+                          nr = 3):
 
     plt.figure(figsize=[nc*3, nr*3])
-
     for c in range(nc):     
-        for r in range(nr):
-            plt.subplot(nc, nr, nc*c+r+1)
-            for s in range(kdes_sd_subjects.shape[0]):
-                plt.plot(z_vals, kdes_sd_subjects[s, nc*c+r, :], 'blue', linewidth=0.5)            
-            plt.title('component ' + str(nc*c+r+1))
-    
+        r=0
+        plt.subplot(nc, nr, nc*c+r+1)
+        for s in range(kdes_sd_subjects_tt.shape[0]):
+            plt.plot(z_vals, kdes_sd_subjects_tt[s, c, :], 'olive', linewidth=0.5)  
+        for s in range(kdes_sd_subjects_tr.shape[0]):
+            plt.plot(z_vals, kdes_sd_subjects_tr[s, c, :], 'blue', linewidth=0.5)  
+        plt.title('pc' + str(c+1) + ', tr_v_tt, avg.KL: ' + str(kl_trtt))
+
+        r=1
+        plt.subplot(nc, nr, nc*c+r+1)
+        for s in range(kdes_sd_subjects_vl.shape[0]):
+            plt.plot(z_vals, kdes_sd_subjects_vl[s, c, :], 'green', linewidth=0.5)  
+        for s in range(kdes_sd_subjects_tr.shape[0]):
+            plt.plot(z_vals, kdes_sd_subjects_tr[s, c, :], 'blue', linewidth=0.5)  
+        plt.title('pc' + str(c+1) + ', tr_v_vl, avg.KL: ' + str(kl_trvl))
+
+        r=2
+        plt.subplot(nc, nr, nc*c+r+1)
+        for s in range(kdes_td_subjects_ts.shape[0]):
+            plt.plot(z_vals, kdes_td_subjects_ts[s, c, :], 'red', linewidth=0.5)  
+        for s in range(kdes_sd_subjects_tr.shape[0]):
+            plt.plot(z_vals, kdes_sd_subjects_tr[s, c, :], 'blue', linewidth=0.5)  
+        plt.title('pc' + str(c+1) + ', tr_v_ts, avg.KL: ' + str(kl_trts))
+
     plt.savefig(savepath, bbox_inches='tight')
+    plt.close()
+
+    plt.figure(figsize=[nc*3, nr*3])
+    for c in range(nc):     
+        r=0
+        plt.subplot(nc, nr, nc*c+r+1)
+        tmp_mu = np.mean(kdes_sd_subjects_tt[:, c, :], 0)
+        tmp_std = np.std(kdes_sd_subjects_tt[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'olive')
+        tmp_mu = np.mean(kdes_sd_subjects_tr[:, c, :], 0)
+        tmp_std = np.std(kdes_sd_subjects_tr[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'blue')
+        plt.title('pc' + str(c+1) + ', tr_v_tt, avg.KL: ' + str(kl_trtt))
+
+        r=1
+        plt.subplot(nc, nr, nc*c+r+1)
+        tmp_mu = np.mean(kdes_sd_subjects_vl[:, c, :], 0)
+        tmp_std = np.std(kdes_sd_subjects_vl[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'green')
+        tmp_mu = np.mean(kdes_sd_subjects_tr[:, c, :], 0)
+        tmp_std = np.std(kdes_sd_subjects_tr[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'blue')
+        plt.title('pc' + str(c+1) + ', tr_v_vl, avg.KL: ' + str(kl_trvl))
+
+        r=2
+        plt.subplot(nc, nr, nc*c+r+1)
+        tmp_mu = np.mean(kdes_td_subjects_ts[:, c, :], 0)
+        tmp_std = np.std(kdes_td_subjects_ts[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'red')
+        tmp_mu = np.mean(kdes_sd_subjects_tr[:, c, :], 0)
+        tmp_std = np.std(kdes_sd_subjects_tr[:, c, :], 0)
+        plt.fill_between(z_vals, tmp_mu - 1*tmp_std, tmp_mu + 1*tmp_std, alpha = 0.5, color = 'blue')
+        plt.title('pc' + str(c+1) + ', tr_v_ts, avg.KL: ' + str(kl_trts))
+            
+    plt.savefig(savepath[:-4] + '_summary.png', bbox_inches='tight')
     plt.close()
 
 # ==========================================================

@@ -581,7 +581,7 @@ def compute_surface_distance(y1,
 # ==================================================================   
 def load_training_data(train_dataset,
                        image_size,
-                       target_resolution,):
+                       target_resolution):
 
     # ================================================================
     # NCI
@@ -629,6 +629,60 @@ def load_training_data(train_dataset,
             gttr,
             orig_data_siz_z_train,
             num_train_subjects)
+
+# ==================================================================   
+# VALIDATION DATA LOADER
+# ==================================================================   
+def load_validation_data(val_dataset,
+                         image_size,
+                         target_resolution):
+
+    # ================================================================
+    # NCI
+    # ================================================================
+    if val_dataset == 'NCI':
+    
+        logging.info('Reading NCI images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
+    
+        data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
+                                                         preprocessing_folder = sys_config.preproc_folder_nci,
+                                                         size = image_size,
+                                                         target_resolution = target_resolution,
+                                                         force_overwrite = False,
+                                                         cv_fold_num = 1)
+        
+        imvl = data_pros['images_validation']
+        gtvl = data_pros['masks_validation']
+        orig_data_siz_z_val = data_pros['nz_validation'][:]
+        num_val_subjects = orig_data_siz_z_val.shape[0] 
+
+    # ================================================================
+    # HCP T1
+    # ================================================================
+    elif val_dataset == 'HCPT1':
+
+        logging.info('Reading HCPT1 images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+
+        data_brain_val = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                              preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                              idx_start = 20,
+                                                              idx_end = 25,             
+                                                              protocol = 'T1',
+                                                              size = image_size,
+                                                              depth = 256,
+                                                              target_resolution = target_resolution)
+                
+        imvl = data_brain_train['images']
+        gtvl = data_brain_train['labels']
+        orig_data_siz_z_val = data_brain_train['nz'][:]
+        num_val_subjects = orig_data_siz_z_val.shape[0] 
+
+    return (imvl,
+            gtvl,
+            orig_data_siz_z_val,
+            num_val_subjects)
 
 # ==================================================================   
 # TEST DATA LOADER
