@@ -44,7 +44,7 @@ parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 # PCA settings
-parser.add_argument('--patch_size', type = int, default = 32) # 32 / 64 / 128
+parser.add_argument('--patch_size', type = int, default = 8) # 32 / 64 / 128
 parser.add_argument('--pca_stride', type = int, default = 8) # 64 / 128
 parser.add_argument('--pca_layer', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
@@ -250,6 +250,15 @@ def main():
         else: # 'logits' / 'softmax'
             num_channels = nlabels
 
+        # 
+        kl_trtt_sdtd = []
+        kl_trvl_sdtd = []
+        kl_trts_sdtd = []
+        kl_trtt_tdsd = []
+        kl_trvl_tdsd = []
+        kl_trts_tdsd = []
+
+        # go through all channels of this feature layer
         for channel in range(num_channels):
 
             logging.info("==================================")
@@ -282,12 +291,12 @@ def main():
                 sd_features[train_sub_num, :, :] = feats_last_layer[feats_last_layer.shape[0]//2, :, :, channel]
 
                 # number of patches from this subject
-                logging.info("Number of patches in SD subject " + str(train_sub_num+1) + ": " + str(ptchs_last_layer.shape[0]))
+                # logging.info("Number of patches in SD subject " + str(train_sub_num+1) + ": " + str(ptchs_last_layer.shape[0]))
                 sd_patches = np.concatenate((sd_patches, ptchs_last_layer), axis=0)
 
                 # extract 'active' patches -> ones for which the softmax of class two has a high value in the central pixel
                 active_ptchs_last_layer = ptchs_last_layer[np.where(ptchs_fg_probs[:, (args.patch_size * (args.patch_size + 1))//2] > 0.8)[0], :]
-                logging.info("Number of active patches in SD subject " + str(train_sub_num+1) + ": " + str(active_ptchs_last_layer.shape[0]))
+                # logging.info("Number of active patches in SD subject " + str(train_sub_num+1) + ": " + str(active_ptchs_last_layer.shape[0]))
                 sd_patches_active = np.concatenate((sd_patches_active, active_ptchs_last_layer), axis=0)
 
             # remove dummy patch added in the front, before the loop over all sd subjects
@@ -336,16 +345,15 @@ def main():
                 num_pcs = pca.n_components_
 
             # how much variance is explained by the first k components
-            logging.info("sum of ratios of variance explained by the first " + str(num_pcs) + " PCs:")
-            logging.info(np.round(np.sum(pca.explained_variance_ratio_), 3))
+            logging.info("sum of ratios of variance explained by the first " + str(num_pcs) + " PCs:" + str(np.round(np.sum(pca.explained_variance_ratio_), 2)))
 
             # visualize the principal components
             if (redraw == True) or (tf.gfile.Exists(log_dir_sd + prefix + 'pcs_c' + str(channel) + '.png') == False):
-                logging.info("Visualizing principal components..")
+                # logging.info("Visualizing principal components..")
                 utils_vis.visualize_principal_components(pca.components_, log_dir_sd + prefix + 'pcs_c' + str(channel) + '.png', args.patch_size, nc = 2, nr = 2)
 
             # Compute KDEs of each latent dimension for patches of each SD training subject      
-            logging.info("Computing KDEs in each latent dimension for individual SD training subjects..")
+            # logging.info("Computing KDEs in each latent dimension for individual SD training subjects..")
             num_tr_slices = np.sum(orig_data_siz_z_train[:args.PCA_TR_NUM])
             kdes_all_sd_tr_subs, z_vals, feats_tr, act_pats_tr = utils_kde.compute_latent_kdes_subjectwise(images = imtr[:num_tr_slices, :, :],
                                                                                                  image_size = image_size,
@@ -417,50 +425,57 @@ def main():
                                                                                                  alpha_kde = args.pca_kde_alpha,
                                                                                                  sess = sess)
 
-            logging.info('features in training (CNN) and training (PCA): ' + str(feats_tr.shape))
-            logging.info('features in training (CNN), but testing (PCA): ' + str(feats_tt.shape))
-            logging.info('features in validation (5 subs): ' + str(feats_vl.shape))
-            logging.info('features in testing (20 subs): ' + str(feats_ts.shape))
+            # logging.info('features in training (CNN) and training (PCA): ' + str(feats_tr.shape))
+            # logging.info('features in training (CNN), but testing (PCA): ' + str(feats_tt.shape))
+            # logging.info('features in validation (5 subs): ' + str(feats_vl.shape))
+            # logging.info('features in testing (20 subs): ' + str(feats_ts.shape))
 
-            utils_vis.save_features(feats_tr, savepath = log_dir_sd + prefix + 'features_tr_c' + str(channel) + '.png')
-            utils_vis.save_features(feats_tt, savepath = log_dir_sd + prefix + 'features_tt_c' + str(channel) + '.png')
-            utils_vis.save_features(feats_vl, savepath = log_dir_sd + prefix + 'features_vl_c' + str(channel) + '.png')
-            utils_vis.save_features(feats_ts, savepath = log_dir_sd + prefix + 'features_ts_c' + str(channel) + '.png')
+            # utils_vis.save_features(feats_tr, savepath = log_dir_sd + prefix + 'features_tr_c' + str(channel) + '.png')
+            # utils_vis.save_features(feats_tt, savepath = log_dir_sd + prefix + 'features_tt_c' + str(channel) + '.png')
+            # utils_vis.save_features(feats_vl, savepath = log_dir_sd + prefix + 'features_vl_c' + str(channel) + '.png')
+            # utils_vis.save_features(feats_ts, savepath = log_dir_sd + prefix + 'features_ts_c' + str(channel) + '.png')
 
-            logging.info('number of active patches in training (CNN) and training (PCA): ' + str(act_pats_tr.shape))
-            logging.info('number of active patches in training (CNN), but testing (PCA): ' + str(act_pats_tt.shape))
-            logging.info('number of active patches in validation (5 subs): ' + str(act_pats_vl.shape))
-            logging.info('number of active patches in testing (20 subs): ' + str(act_pats_ts.shape))
+            # logging.info('number of active patches in training (CNN) and training (PCA): ' + str(act_pats_tr.shape))
+            # logging.info('number of active patches in training (CNN), but testing (PCA): ' + str(act_pats_tt.shape))
+            # logging.info('number of active patches in validation (5 subs): ' + str(act_pats_vl.shape))
+            # logging.info('number of active patches in testing (20 subs): ' + str(act_pats_ts.shape))
 
-            utils_vis.save_patches(act_pats_tr,
-                                   savepath = log_dir_sd + prefix + 'act_pats_tr_c' + str(channel) + '.png',
-                                   ids = np.random.randint(0, act_pats_tr.shape[0], 25),
-                                   nc = 5,
-                                   nr = 5,
-                                   psize = args.patch_size)
-            utils_vis.save_patches(act_pats_tt,
-                                   savepath = log_dir_sd + prefix + 'act_pats_tt_c' + str(channel) + '.png',
-                                   ids = np.random.randint(0, act_pats_tt.shape[0], 25),
-                                   nc = 5,
-                                   nr = 5,
-                                   psize = args.patch_size)
-            utils_vis.save_patches(act_pats_vl,
-                                   savepath = log_dir_sd + prefix + 'act_pats_vl_c' + str(channel) + '.png',
-                                   ids = np.random.randint(0, act_pats_vl.shape[0], 25),
-                                   nc = 5,
-                                   nr = 5,
-                                   psize = args.patch_size)
-            utils_vis.save_patches(act_pats_ts,
-                                   savepath = log_dir_sd + prefix + 'act_pats_ts_c' + str(channel) + '.png',
-                                   ids = np.random.randint(0, act_pats_ts.shape[0], 25),
-                                   nc = 5,
-                                   nr = 5,
-                                   psize = args.patch_size)
+            # utils_vis.save_patches(act_pats_tr,
+            #                        savepath = log_dir_sd + prefix + 'act_pats_tr_c' + str(channel) + '.png',
+            #                        ids = np.random.randint(0, act_pats_tr.shape[0], 25),
+            #                        nc = 5,
+            #                        nr = 5,
+            #                        psize = args.patch_size)
+            # utils_vis.save_patches(act_pats_tt,
+            #                        savepath = log_dir_sd + prefix + 'act_pats_tt_c' + str(channel) + '.png',
+            #                        ids = np.random.randint(0, act_pats_tt.shape[0], 25),
+            #                        nc = 5,
+            #                        nr = 5,
+            #                        psize = args.patch_size)
+            # utils_vis.save_patches(act_pats_vl,
+            #                        savepath = log_dir_sd + prefix + 'act_pats_vl_c' + str(channel) + '.png',
+            #                        ids = np.random.randint(0, act_pats_vl.shape[0], 25),
+            #                        nc = 5,
+            #                        nr = 5,
+            #                        psize = args.patch_size)
+            # utils_vis.save_patches(act_pats_ts,
+            #                        savepath = log_dir_sd + prefix + 'act_pats_ts_c' + str(channel) + '.png',
+            #                        ids = np.random.randint(0, act_pats_ts.shape[0], 25),
+            #                        nc = 5,
+            #                        nr = 5,
+            #                        psize = args.patch_size)
 
             # compute average KL between across all pairs of KDEs
-            avg_kl_tr_tt = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_tt_subs)
-            avg_kl_tr_vl = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_vl_subs)
-            avg_kl_tr_ts = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_td_ts_subs)
+            avg_kl_trtt_sdtd, avg_kl_trtt_tdsd = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_tt_subs)
+            avg_kl_trvl_sdtd, avg_kl_trvl_tdsd = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_sd_vl_subs)
+            avg_kl_trts_sdtd, avg_kl_trts_tdsd = utils_kde.compute_kl_between_kdes_numpy(kdes_all_sd_tr_subs, kdes_all_td_ts_subs)
+
+            kl_trtt_sdtd.append(avg_kl_trtt_sdtd)
+            kl_trvl_sdtd.append(avg_kl_trvl_sdtd)
+            kl_trts_sdtd.append(avg_kl_trts_sdtd)
+            kl_trtt_tdsd.append(avg_kl_trtt_tdsd)
+            kl_trvl_tdsd.append(avg_kl_trvl_tdsd)
+            kl_trts_tdsd.append(avg_kl_trts_tdsd)
 
             # plot KDEs of SD train, SD val and TD test subjects
             utils_vis.plot_kdes_for_latents(kdes_all_sd_tr_subs,
@@ -468,10 +483,14 @@ def main():
                                             kdes_all_sd_vl_subs,
                                             kdes_all_td_ts_subs,
                                             z_vals,
-                                            log_dir_sd + prefix + 'kde_c' + str(channel) + '.png',
-                                            avg_kl_tr_tt,
-                                            avg_kl_tr_vl,
-                                            avg_kl_tr_ts)
+                                            log_dir_sd + prefix + 'kde_c' + str(channel) + '.png')
+
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs TT, SDvTD: " + str(np.mean(np.array(kl_trtt_sdtd))))
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs VL, SDvTD: " + str(np.mean(np.array(kl_trvl_sdtd))))
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs TS, SDvTD: " + str(np.mean(np.array(kl_trts_sdtd))))
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs TT, TDvSD: " + str(np.mean(np.array(kl_trtt_tdsd))))
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs VL, TDvSD: " + str(np.mean(np.array(kl_trvl_tdsd))))
+        logging.info("MEAN KL (over channels, subject pairs, latent dims) TR vs TS, TDvSD: " + str(np.mean(np.array(kl_trts_tdsd))))
 
         # ================================================================
         # Close the session

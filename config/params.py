@@ -173,6 +173,7 @@ def make_tta_exp_name(args):
     
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+    exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
     
     if args.tta_init_from_scratch == 1:
         exp_str = exp_str + '/Reinit_before_TTA'

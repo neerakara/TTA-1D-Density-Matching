@@ -457,7 +457,7 @@ def compute_latent_kdes_subjectwise(images,
     kdes_allsubs = []
 
     for sub_num in range(image_depths.shape[0]):
-        logging.info("Subject " + str(sub_num+1))
+        # logging.info("Subject " + str(sub_num+1))
         # extract one subject
         image = images[np.sum(image_depths[:sub_num]) : np.sum(image_depths[:sub_num+1]),:,:]
         feed_dict={image_placeholder: np.expand_dims(image, axis=-1),
@@ -491,10 +491,10 @@ def compute_latent_kdes_subjectwise(images,
 # NUMPY. Riemann integral
 # ==================================
 def compute_kl_between_kdes_numpy(sd_pdfs, # [num_subjects, num_dims, num_evals_of_each_kde]
-                                  td_pdfs, # [num_subjects, num_dims, num_evals_of_each_kde]
-                                  order = 'sd_vs_td'):
+                                  td_pdfs): # [num_subjects, num_dims, num_evals_of_each_kde]
 
-    kl = 0
+    kl1 = 0 # sd vs td
+    kl2 = 0 # td vs sd
 
     for i in range(sd_pdfs.shape[0]):
         for j in range(td_pdfs.shape[0]):
@@ -502,10 +502,11 @@ def compute_kl_between_kdes_numpy(sd_pdfs, # [num_subjects, num_dims, num_evals_
             sd_pdf = sd_pdfs[i, :, :]
             td_pdf = td_pdfs[j, :, :]
 
-            if order == 'sd_vs_td':
             # (via Riemann integral)
-                kl = kl + np.mean(np.sum(np.multiply(sd_pdf, np.log(np.divide(sd_pdf, td_pdf + 1e-5) + 1e-2)), axis = -1))
+            kl1 = kl1 + np.mean(np.sum(np.multiply(sd_pdf, np.log(np.divide(sd_pdf, td_pdf + 1e-5) + 1e-2)), axis = -1))
+            kl2 = kl2 + np.mean(np.sum(np.multiply(td_pdf, np.log(np.divide(td_pdf, sd_pdf + 1e-5) + 1e-2)), axis = -1))
 
-    avg_kl = kl / (sd_pdfs.shape[0] * td_pdfs.shape[0])
+    avg_kl1 = kl1 / (sd_pdfs.shape[0] * td_pdfs.shape[0])
+    avg_kl2 = kl2 / (sd_pdfs.shape[0] * td_pdfs.shape[0])
 
-    return np.round(avg_kl, 3)
+    return np.round(avg_kl1, 2), np.round(avg_kl2, 2)

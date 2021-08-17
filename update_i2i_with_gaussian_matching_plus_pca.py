@@ -43,7 +43,7 @@ parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
 parser.add_argument('--PCA_NUM_LATENTS', type = int, default = 10) # 5 / 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.1 / 0.01
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.01) # 1.0 / 0.1 / 0.01 
 # Which vars to adapt?
 parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
 # How many moments to match and how?
@@ -51,14 +51,15 @@ parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_K
 parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
 parser.add_argument('--KL_ORDER', default = "sd_vs_td") # sd_vs_td / td_vs_sd
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8
+parser.add_argument('--b_size', type = int, default = 16) 
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
+parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 # Re-INIT TTA vars?
 parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
 # SFDA options
@@ -180,6 +181,12 @@ if not tf.gfile.Exists(log_dir_tta):
 # build the TF graph
 # ================================================================
 with tf.Graph().as_default():
+    
+    # ============================
+    # set random seed for reproducibility
+    # ============================
+    tf.random.set_random_seed(args.tta_runnum)
+    np.random.seed(args.tta_runnum)
     
     # ================================================================
     # create placeholders
@@ -384,13 +391,21 @@ with tf.Graph().as_default():
         # ================================================================
         # PCA
         # ================================================================
-        patches_softmax = utils_kde.extract_patches(softmax,
-                                                    channel = 2, # This needs to be 1 or 2 for prostate data
-                                                    psize = args.PCA_PSIZE,
-                                                    stride = args.PCA_STRIDE)
+        # patches_softmax = utils_kde.extract_patches(softmax,
+        #                                             channel = 2, # This needs to be 1 or 2 for prostate data
+        #                                             psize = args.PCA_PSIZE,
+        #                                             stride = args.PCA_STRIDE) 
+
+        # Combine the softmax scores into a map of foreground probabilities and use this to select active patches
+        features_fg_probs = tf.expand_dims(tf.math.reduce_max(softmax[:, :, :, 1:], axis=-1), axis=-1)
+        patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
+                                                     channel = 0, 
+                                                     psize = args.PCA_PSIZE,
+                                                     stride = args.PCA_STRIDE)        
+
 
         # Get indices of active patches
-        indices_active_patches = tf.squeeze(tf.where(patches_softmax[:, (args.PCA_PSIZE * (args.PCA_PSIZE + 1)) // 2] > 0.8))
+        indices_active_patches = tf.squeeze(tf.where(patches_fg_probs[:, (args.PCA_PSIZE * (args.PCA_PSIZE + 1)) // 2] > 0.8))
 
         # Compute features from layer 7_2
         features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
@@ -442,7 +457,11 @@ with tf.Graph().as_default():
         # ==================================
         # match full PDFs with KL loss
         if args.match_moments == 'All_KL': 
-            loss_op = loss_all_kl_g1_op + loss_all_kl_g2_op + loss_all_kl_g3_op + lambda_pca_pl * loss_pca_kl_op
+            ncg1 = 688
+            ncg2 = 16
+            ncg3 = nlabels
+            loss_all_kl_op = (ncg1 * loss_all_kl_g1_op + ncg2 * loss_all_kl_g2_op + ncg3 * loss_all_kl_g3_op) / (ncg1 + ncg2 + ncg3)
+            loss_op = loss_all_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
                 
         # ================================================================
         # add losses to tensorboard
@@ -663,7 +682,7 @@ with tf.Graph().as_default():
         # LOAD PCA RESULTS
         # =============================
         pca_dir = sys_config.project_root + 'log_dir/' + expname_i2l + 'pca/p' + str(args.PCA_PSIZE) + 's' + str(args.PCA_STRIDE)
-        pca_dir = pca_dir + '_dim' + str(args.PCA_NUM_LATENTS) + '_layer_7_2/'
+        pca_dir = pca_dir + '_dim' + str(args.PCA_NUM_LATENTS) + '_layer_7_2_active_all_fg_numtr15/'
         num_pca_channels = 16
         pca_means = []
         pca_pcs = []
