@@ -27,7 +27,7 @@ preproc_folder_acdc = os.path.join(data_root,'ACDC/')
 # define dummy paths for the original data storage. directly using pre-processed data for now
 # ==================================================================
 orig_data_root_acdc = ''
-orig_data_root_nci = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/NCI_Prostate/'
+orig_data_root_nci = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/NCI/'
 orig_data_root_promise = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/Prostate_PROMISE12/TrainingData/'
 orig_data_root_pirad_erc = '/cluster/work/cvl/shared/bmicdatasets/original/USZ/Prostate/'
 orig_data_root_abide = '/cluster/work/cvl/shared/bmicdatasets/original/ABIDE/'
