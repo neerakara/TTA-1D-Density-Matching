@@ -2,6 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import logging
+import config.params as exp_config
 
 # ==============================================
 # ==============================================
@@ -152,6 +153,68 @@ def compute_pairwise_potentials(features, potential_type):
         pairwise_potentials = tf.reduce_sum(tf.math.abs(features_sobel_edges), axis=-1)
 
     return pairwise_potentials
+
+# ==============================================
+# Function to define ops for computing KDEs at each channel of each layer
+# ==============================================
+def compute_1d_kdes(feature_subsampling_factor, # subsampling factor
+                    features_randomized, # whether to sample randomly or uniformly
+                    delta_x_pl, # zero padding information
+                    delta_y_pl,
+                    x_pdf_g1_pl, # points where the KDEs have to be evaluated
+                    x_pdf_g2_pl,
+                    x_pdf_g3_pl,
+                    alpha_pl): # smoothing parameter
+    # ==================================
+    # GROUP 1
+    # ==================================
+    kdes_g1 = tf.zeros([1, x_pdf_g1_pl.shape[0]]) # shape [num_channels, num_points_along_intensity_range]
+    for conv_block in [1,2,3,4,5,6,7]:
+        for conv_sub_block in [1,2]:
+            if conv_block == 7 and conv_sub_block == 2:
+                continue
+            conv_string = str(conv_block) + '_' + str(conv_sub_block)
+            features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0')
+            channel_kde_this_layer = compute_feature_kdes(features,
+                                                          feature_subsampling_factor,
+                                                          features_randomized,
+                                                          x_pdf_g1_pl,
+                                                          alpha_pl,
+                                                          block_num = conv_block,
+                                                          deltax = delta_x_pl,
+                                                          deltay = delta_y_pl)
+            kdes_g1 = tf.concat([kdes_g1, channel_kde_this_layer], 0)
+    # Ignore the zeroth column that was added at the start of the loop
+    kdes_g1 = kdes_g1[1:, :]
+
+    # ==================================
+    # GROUP 2 (layer 7_2)
+    # ==================================
+    features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
+    kdes_g2 = compute_feature_kdes(features,
+                                   feature_subsampling_factor,
+                                   features_randomized,
+                                   x_pdf_g2_pl,
+                                   alpha_pl,
+                                   block_num = 7,
+                                   deltax = delta_x_pl,
+                                   deltay = delta_y_pl)
+
+    # ==================================
+    # GROUP 3 (soft probabilities)
+    # ==================================
+    # features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred/Conv2D:0') # logits
+    features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred_seg_soft:0') # soft probabilities
+    kdes_g3 = compute_feature_kdes(features,
+                                   feature_subsampling_factor,
+                                   features_randomized,
+                                   x_pdf_g3_pl,
+                                   alpha_pl,
+                                   block_num = 8,
+                                   deltax = delta_x_pl,
+                                   deltay = delta_y_pl)
+
+    return kdes_g1, kdes_g2, kdes_g3
 
 # ==============================================   
 # ==============================================
@@ -341,52 +404,115 @@ def compute_kde_losses(sd_pdfs,
 
 # ==================================
 # ==================================
-def compute_sd_pdfs(filename,
-                    train_dataset,
+def compute_sd_kdes(train_dataset,
                     imtr,
                     image_depth_tr,
-                    orig_data_siz_z_train,
                     b_size,
                     sess,
-                    td_pdfs,
                     images_pl,
-                    x_pdf_pl,
-                    x_values,
                     alpha_pl,
-                    alpha):
+                    alpha,
+                    kdes_g1, kdes_g2, kdes_g3,
+                    x_kde_g1_pl, x_kde_g2_pl, x_kde_g3_pl,
+                    kde_g1_params, kde_g2_params, kde_g3_params,
+                    res_x,
+                    res_y,
+                    target_res,
+                    size_x,
+                    size_y,
+                    size_z,
+                    delta_x_pl,
+                    delta_y_pl,
+                    savepath):
 
-    if os.path.isfile(filename):            
-        pdfs_sd = np.load(filename) # [num_subjects, num_channels, 2]
+    # make array of points where the KDEs have to be evaluated
+    x_values_g1 = np.arange(kde_g1_params[0], kde_g1_params[1] + kde_g1_params[2], kde_g1_params[2])
+    x_values_g2 = np.arange(kde_g2_params[0], kde_g2_params[1] + kde_g2_params[2], kde_g2_params[2])
+    x_values_g3 = np.arange(kde_g3_params[0], kde_g3_params[1] + kde_g3_params[2], kde_g3_params[2])
 
-    else:
-        pdfs_sd = []
-        for train_sub_num in range(orig_data_siz_z_train.shape[0]):
-            logging.info("==== Computing pdf for subject " + str(train_sub_num) + '..')
-            if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-                sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
-            else:
-                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-            logging.info(sd_image.shape)
-            
-            num_batches = 0
-            for b_i in range(0, sd_image.shape[0], b_size):
-                if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
-                    pdfs_this_batch = sess.run(td_pdfs, feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                   x_pdf_pl: x_values,
-                                                                   alpha_pl: alpha})
-                    if b_i == 0:
-                        pdfs_this_subject = pdfs_this_batch
-                    else:
-                        pdfs_this_subject = pdfs_this_subject + pdfs_this_batch
-                    num_batches = num_batches + 1
-            pdfs_this_subject = pdfs_this_subject / num_batches
-            pdfs_sd.append(pdfs_this_subject)
+    kdes_sd_g1 = []
+    kdes_sd_g2 = []
+    kdes_sd_g3 = []
+
+    # =========================
+    # Loop over all SD subjects
+    # =========================
+    for sub_num in range(size_z.shape[0]):
+
+        # =========================
+        # Extract one SD subject
+        # =========================
+        logging.info("==== Computing pdf for subject " + str(sub_num) + '..')
+        if train_dataset == 'HCPT1': # circumventing a bug in the way size_z is written for HCP images
+            sd_image = imtr[sub_num*image_depth_tr : (sub_num+1)*image_depth_tr,:,:]
+        else:
+            sd_image = imtr[np.sum(size_z[:sub_num]) : np.sum(size_z[:sub_num+1]),:,:]
+        logging.info(sd_image.shape)
+
+        # =========================
+        # Compute the padding in this subject
+        # =========================
+        nxhat = size_x[sub_num] * res_x[sub_num] / target_res[0]
+        nyhat = size_y[sub_num] * res_y[sub_num] / target_res[1]
+        padding_x = np.maximum(0, sd_image.shape[1] - nxhat.astype(np.uint16)) // 2
+        padding_y = np.maximum(0, sd_image.shape[2] - nyhat.astype(np.uint16)) // 2
+
+        logging.info('shape after preproc: ' + str(sd_image.shape))
+        logging.info('x-dim orig: ' + str(size_x[sub_num]))
+        logging.info('x-res orig: ' + str(res_x[sub_num]))
+        logging.info('size after resampling: ' + str(nxhat))
+        logging.info('padding: ' + str(padding_x))
         
-        pdfs_sd = np.array(pdfs_sd)
-        # save
-        np.save(filename, pdfs_sd)
+        # =========================
+        # Loop over batches of this subject
+        # =========================
+        num_batches = 0
+        for b_i in range(0, sd_image.shape[0], b_size):
+            if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
+                
+                kdes_batch_g1, kdes_batch_g2, kdes_batch_g3 = sess.run([kdes_g1, kdes_g2, kdes_g3],
+                                                                       feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
+                                                                                  alpha_pl: alpha,
+                                                                                  x_kde_g1_pl: x_values_g1,
+                                                                                  x_kde_g2_pl: x_values_g2,
+                                                                                  x_kde_g3_pl: x_values_g3,
+                                                                                  delta_x_pl: padding_x,
+                                                                                  delta_y_pl: padding_y})
+                if b_i == 0:
+                    kdes_this_subject_g1 = kdes_batch_g1
+                    kdes_this_subject_g2 = kdes_batch_g2
+                    kdes_this_subject_g3 = kdes_batch_g3
+                else:
+                    kdes_this_subject_g1 = kdes_this_subject_g1 + kdes_batch_g1
+                    kdes_this_subject_g2 = kdes_this_subject_g2 + kdes_batch_g2
+                    kdes_this_subject_g3 = kdes_this_subject_g3 + kdes_batch_g3
+                
+                num_batches = num_batches + 1
+        
+        kdes_this_subject_g1 = kdes_this_subject_g1 / num_batches
+        kdes_this_subject_g2 = kdes_this_subject_g2 / num_batches
+        kdes_this_subject_g3 = kdes_this_subject_g3 / num_batches
+        
+        # append to list 
+        kdes_sd_g1.append(kdes_this_subject_g1)
+        kdes_sd_g2.append(kdes_this_subject_g2)
+        kdes_sd_g3.append(kdes_this_subject_g3)
 
-    return pdfs_sd
+    kdes_sd_g1 = np.array(kdes_sd_g1)
+    kdes_sd_g2 = np.array(kdes_sd_g2)
+    kdes_sd_g3 = np.array(kdes_sd_g3)
+
+    # make the filenames where the KDEs have to be stored
+    sd_kdes_fname_g1 = savepath + exp_config.make_sd_kde_name(b_size, alpha, kde_g1_params) + '_g1.npy'
+    sd_kdes_fname_g2 = savepath + exp_config.make_sd_kde_name(b_size, alpha, kde_g2_params) + '_g2.npy'
+    sd_kdes_fname_g3 = savepath + exp_config.make_sd_kde_name(b_size, alpha, kde_g3_params) + '_g3.npy'
+    
+    # save
+    np.save(sd_kdes_fname_g1, kdes_sd_g1)
+    np.save(sd_kdes_fname_g2, kdes_sd_g2)
+    np.save(sd_kdes_fname_g3, kdes_sd_g3)
+
+    return kdes_sd_g1, kdes_sd_g2, kdes_sd_g3
 
 # ==================================
 # ==================================
@@ -419,7 +545,7 @@ def compute_sd_gaussians(filename,
         for sub_num in range(size_z.shape[0]):
             
             logging.info("==== Computing Gaussian for subject " + str(sub_num) + '..')
-            if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
+            if train_dataset == 'HCPT1': # circumventing a bug in the way size_z is written for HCP images
                 sd_image = imtr[sub_num*image_depth_tr : (sub_num+1)*image_depth_tr,:,:]
             else:
                 sd_image = imtr[np.sum(size_z[:sub_num]) : np.sum(size_z[:sub_num+1]),:,:]

@@ -31,9 +31,9 @@ def test_train_val_split(patient_id,
                 return 'test'
 
         if sub_dataset == 'BMC':
-            if patient_id < 45:
+            if patient_id < 74: # 45
                 return 'train'
-            elif patient_id < 59:
+            elif patient_id < 83: # 59
                 return 'validation'
             else:
                 return 'test'

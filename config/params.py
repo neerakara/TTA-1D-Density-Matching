@@ -98,6 +98,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset = ''):
         tta_vis_freq = 10
 
         # =================================
+        # Batch sizes for SD Gaussian / KDE computation
         # =================================
         b_size_compute_sd_pdfs = 16
         b_size_compute_sd_gaussians = 16
@@ -129,8 +130,12 @@ def get_dataset_dependent_params(train_dataset, test_dataset = ''):
         tta_vis_freq = 10
 
         # =================================
+        # Batch sizes for SD Gaussian / KDE computation
         # =================================
-        b_size_compute_sd_pdfs = 2
+        # b_size_compute_sd_pdfs is set to a low value,
+        # because the last incomplete batch is ignored in the SD KDE computation.
+        # So we would like to cover almost the whole image with 'full' batches.
+        b_size_compute_sd_pdfs = 2 
         b_size_compute_sd_gaussians = 0 # Use full images
 
     return (image_size, # 0
@@ -212,18 +217,13 @@ def make_sd_RP_gaussian_names(path_to_model,
 # ================================================================
 # Function to make the name for the file containing SD KDEs
 # ================================================================
-def make_sd_pdf_name(path_to_model,
-                     b_size,
-                     args,
-                     group,
+def make_sd_kde_name(b_size,
+                     alpha,
                      group_kde_params):
 
-    pdf_str = 'alpha' + str(args.alpha)
-    pdf_str = pdf_str + '_group' + str(group)
-    pdf_str = pdf_str + 'xmin' + str(group_kde_params[0])
-    pdf_str = pdf_str + 'xmax' + str(group_kde_params[1])
-    pdf_str = pdf_str + 'res' + str(group_kde_params[2])
-    pdf_str = pdf_str + '_bsize' + str(b_size)    
-    sd_pdfs_fname = path_to_model + 'sd_pdfs_' + pdf_str + '_subjectwise.npy'
+    kde_str = 'sd_kdes_subjectwise_bsize' + str(b_size) + '_alpha' + str(alpha)
+    kde_str = kde_str + '_' + str(group_kde_params[0])
+    kde_str = kde_str + '_' + str(group_kde_params[1])
+    kde_str = kde_str + '_' + str(group_kde_params[2])
 
-    return sd_pdfs_fname
+    return kde_str

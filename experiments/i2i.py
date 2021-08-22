@@ -26,21 +26,6 @@ norm_batch_norm = False
 model_handle_i2l = model_zoo.unet2D_i2l
 
 # ======================================================================
-# test settings
-# ======================================================================
-if train_dataset == 'HCPT1':
-    whole_gland_results = False
-elif train_dataset == 'BMC' or train_dataset == 'RUNMC':
-    whole_gland_results = True
-normalize = True
-
-# ====================================================
-# TTA experiment identifier
-# ====================================================
-tta_string = 'tta_pdf_matching/'
-simul_string = 'simulated_domain_shifts/adaBN_v2/'
-
-# ======================================================================
 # data settings
 # ======================================================================
 data_mode = '2D'
@@ -57,7 +42,7 @@ loss_type = 'dice'
 # training settings
 # ======================================================================
 batch_size = 16
-learning_rate = 1e-3
+learning_rate = 1e-4
 optimizer_handle = tf.train.AdamOptimizer
 continue_run = False
 debug = False
@@ -90,7 +75,7 @@ batch_size_downsampled = int(batch_size / downsampling_factor_x)
 max_steps = 50001
 train_eval_frequency = 1000
 val_eval_frequency = 1000
-save_frequency = 1000
+save_frequency = 5000
 summary_writing_frequency = 100
 
 # ======================================================================
