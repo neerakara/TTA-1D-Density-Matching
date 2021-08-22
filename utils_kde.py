@@ -24,7 +24,69 @@ def determine_zero_padding_this_depth(n, dx, dy):
         dy_ = dy // 8
     
     return dx_, dy_
-        
+
+# ================================================
+# Function to define ops for computing parameters of Gaussian distributions at each channel of each layer
+# ================================================
+def compute_1d_gaussian_parameters(feature_subsampling_factor,
+                                   features_randomized,
+                                   delta_x_pl,
+                                   delta_y_pl):
+
+    # ========
+    # Ops for computing parameters of Gaussian distributions at each channel of each layer
+    # ========
+    means_1d = tf.zeros([1])
+    variances_1d = tf.ones([1])
+
+    # ========
+    # Iterate through all channels of all layers
+    # ========
+    for conv_block in [1,2,3,4,5,6,7]:
+        for conv_sub_block in [1,2]:
+            conv_string = str(conv_block) + '_' + str(conv_sub_block)
+            
+            # ========
+            # Extract features of this layer
+            # ========
+            # features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '/Conv2D:0') # BEFORE BN
+            features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + conv_string + '_bn/FusedBatchNorm:0') # AFTER BN
+
+            # ========
+            # Compute the first two moments for all channels of this layer
+            # ========
+            this_layer_means, this_layer_variances = compute_first_two_moments(features,
+                                                                               feature_subsampling_factor,
+                                                                               features_randomized,
+                                                                               block_num = conv_block,
+                                                                               deltax = delta_x_pl,
+                                                                               deltay = delta_y_pl)
+            # ========
+            # Concat to list
+            # ========                                                                                         
+            means_1d = tf.concat([means_1d, this_layer_means], 0)
+            variances_1d = tf.concat([variances_1d, this_layer_variances], 0)
+
+    # ========
+    # Compute the parameters of the Gaussians at the softmax layer
+    # ========
+    features = tf.get_default_graph().get_tensor_by_name('i2l_mapper/pred_seg_soft:0')
+    logging.info(features.shape)
+    this_layer_means, this_layer_variances = compute_first_two_moments(features,
+                                                                       feature_subsampling_factor,
+                                                                       features_randomized,
+                                                                       block_num = 8,
+                                                                       deltax = delta_x_pl,
+                                                                       deltay = delta_y_pl)
+    means_1d = tf.concat([means_1d, this_layer_means], 0)
+    variances_1d = tf.concat([variances_1d, this_layer_variances], 0)
+
+    # Remove the 'dummy' first entry
+    means1d = means_1d[1:]
+    variances1d = variances_1d[1:]
+
+    return means1d, variances1d
+
 # ==============================================
 # ==============================================
 def compute_first_two_moments(features,
@@ -91,7 +153,7 @@ def compute_pairwise_potentials(features, potential_type):
 
     return pairwise_potentials
 
-# ==============================================
+# ==============================================   
 # ==============================================
 def compute_feature_kdes(features,
                          feature_subsampling_factor,
@@ -332,36 +394,61 @@ def compute_sd_gaussians(filename,
                          train_dataset,
                          imtr,
                          image_depth_tr,
-                         orig_data_siz_z_train,
                          b_size,
                          sess,
-                         td_mu,
-                         td_var,
-                         images_pl):
+                         gaussian_mu,
+                         gaussian_var,
+                         images_pl,
+                         res_x,
+                         res_y,
+                         target_res,
+                         size_x,
+                         size_y,
+                         size_z,
+                         delta_x_pl,
+                         delta_y_pl):
 
-    if os.path.isfile(filename):            
+    if os.path.isfile(filename):   
+        logging.info("Gaussian params already computed. Loading..")         
         gaussians_sd = np.load(filename) # [num_subjects, num_channels, 2]
 
     else:
+        logging.info("Computing Gaussian params..")         
         gaussians_sd = []            
 
-        for train_sub_num in range(orig_data_siz_z_train.shape[0]):
+        for sub_num in range(size_z.shape[0]):
             
-            logging.info("==== Computing Gaussian for subject " + str(train_sub_num) + '..')
+            logging.info("==== Computing Gaussian for subject " + str(sub_num) + '..')
             if train_dataset == 'HCPT1': # circumventing a bug in the way orig_data_siz_z_train is written for HCP images
-                sd_image = imtr[train_sub_num*image_depth_tr : (train_sub_num+1)*image_depth_tr,:,:]
+                sd_image = imtr[sub_num*image_depth_tr : (sub_num+1)*image_depth_tr,:,:]
             else:
-                sd_image = imtr[np.sum(orig_data_siz_z_train[:train_sub_num]) : np.sum(orig_data_siz_z_train[:train_sub_num+1]),:,:]
-            logging.info(sd_image.shape)
+                sd_image = imtr[np.sum(size_z[:sub_num]) : np.sum(size_z[:sub_num+1]),:,:]
+                        
+            # =========================
+            # Compute the padding in this subject
+            # =========================
+            nxhat = size_x[sub_num] * res_x[sub_num] / target_res[0]
+            nyhat = size_y[sub_num] * res_y[sub_num] / target_res[1]
+            padding_x = np.maximum(0, sd_image.shape[1] - nxhat.astype(np.uint16)) // 2
+            padding_y = np.maximum(0, sd_image.shape[2] - nyhat.astype(np.uint16)) // 2
+
+            logging.info('shape after preproc: ' + str(sd_image.shape))
+            logging.info('x-dim orig: ' + str(size_x[sub_num]))
+            logging.info('x-res orig: ' + str(res_x[sub_num]))
+            logging.info('size after resampling: ' + str(nxhat))
+            logging.info('padding: ' + str(padding_x))
             
             # =========================
-            # Do batchwise computations
+            # If b_size != 0, Do batchwise computations
             # =========================
             if b_size != 0:
                 num_batches = 0
                 for b_i in range(0, sd_image.shape[0], b_size):
                     if b_i + b_size < sd_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
-                        b_mu, b_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1)})
+                        b_mu, b_var = sess.run([gaussian_mu, gaussian_var],
+                                               feed_dict={images_pl: np.expand_dims(sd_image[b_i:b_i+b_size, ...], axis=-1),
+                                                          delta_x_pl: padding_x,
+                                                          delta_y_pl: padding_y})
                         if b_i == 0:
                             s_mu = b_mu
                             s_var = b_var
@@ -372,10 +459,13 @@ def compute_sd_gaussians(filename,
                 s_mu = s_mu / num_batches
                 s_var = s_var / num_batches
             # =========================
-            # Use full images to compute stats
+            # Else, use full images to compute stats
             # =========================
             elif b_size == 0:
-                s_mu, s_var = sess.run([td_mu, td_var], feed_dict={images_pl: np.expand_dims(sd_image, axis=-1)})
+                s_mu, s_var = sess.run([gaussian_mu, gaussian_var],
+                                       feed_dict={images_pl: np.expand_dims(sd_image, axis=-1),
+                                                  delta_x_pl: padding_x,
+                                                  delta_y_pl: padding_y})
 
             # Append to list
             gaussians_sd.append(np.stack((s_mu, s_var), 1))

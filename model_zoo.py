@@ -71,9 +71,14 @@ def unet2D_i2l(images, nlabels, training_pl, scope_reuse=False):
         # ====================================
         # Final conv layer - without batch normalization or activation
         # ====================================
-        pred = layers.conv2D_layer(x=conv7_2, name='pred', num_filters=nlabels, kernel_size=1)
+        pred_logits = layers.conv2D_layer(x=conv7_2, name='pred', num_filters=nlabels, kernel_size=1)
 
-    return pred
+        # ====================================
+        # convert the logits to segmentation probabilities
+        # ====================================
+        pred_seg_soft = tf.nn.softmax(pred_logits, name='pred_seg_soft')
+
+    return pred_logits
 
 # ======================================================================
 # 2D autoencoder self supervised task

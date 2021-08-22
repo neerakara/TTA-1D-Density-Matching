@@ -61,7 +61,7 @@ noise_max = 0.1
 
 # ======================================================================
 # ======================================================================
-def get_dataset_dependent_params(train_dataset, test_dataset):
+def get_dataset_dependent_params(train_dataset, test_dataset = ''):
     
     if train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
 
@@ -102,7 +102,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset):
         b_size_compute_sd_pdfs = 16
         b_size_compute_sd_gaussians = 16
 
-    elif train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
+    elif train_dataset in ['BMC', 'RUNMC', 'UCL', 'HK', 'BIDMC', 'PIRAD_ERC']:
 
         # =================================
         # size, resolution, etc.
@@ -185,19 +185,13 @@ def make_tta_exp_name(args):
 # ================================================================
 # Function to make the name for the file containing SD Gaussian parameters
 # ================================================================
-def make_sd_gaussian_names(path_to_model, b_size, args):
+def make_sd_gaussian_names(basepath, args):
 
-    fname = path_to_model + 'sd_gaussians_' + args.before_or_after_bn + '_BN_subjectwise'
+    sd_gaussians_filename = basepath + 'sd_gaussians_subjectwise'
+    sd_gaussians_filename = sd_gaussians_filename + '_subsample' + str(args.feature_subsampling_factor)
+    sd_gaussians_filename = sd_gaussians_filename + '_rand' + str(args.features_randomized)
 
-    if b_size != 0:
-        fname = fname + '_bsize' + str(b_size)
-
-    if args.use_logits_for_TTA == 1:
-        fname = fname + '_incl_logits'    
-
-    sd_gaussians_filename = fname + '.npy' 
-
-    return sd_gaussians_filename
+    return sd_gaussians_filename + '.npy'
 
 # ================================================================
 # Function to make the name for the file containing SD Gaussian parameters
