@@ -15,6 +15,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # Maximum number of data points that can be in memory at any time
 MAX_WRITE_BUFFER = 5
 
+# IDs of the different sub-datasets within the PROMISE12 dataset
+RUNMC_IDS = [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+UCL_IDS = [1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37]
+BIDMC_IDS = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+HK_IDS = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
 
 # ===============================================================
 # convert to nii and do bias correction for all images
@@ -22,6 +27,7 @@ MAX_WRITE_BUFFER = 5
         # the affine matrix is simply set as the identity matrix.
         # Also, the other header info such as the image resolution is not copied into the nii images
         # This must be read from the original mhd images
+# TODO: Change the paths to those on Euler.
 # ===============================================================
 def convert_to_nii_and_correct_bias_field():
     
@@ -60,27 +66,23 @@ def convert_to_nii_and_correct_bias_field():
 # ===============================================================
 # ===============================================================
 def test_train_val_split(patient_id,
+                         sub_dataset_ids,
                          cv_fold_number):
     
     if cv_fold_number == 1:
-        if patient_id < 20: return 'train'
-        elif patient_id < 30: return 'validation'
-        else: return 'test'
+        if patient_id in sub_dataset_ids[-5:]: return 'test'
+        elif patient_id in sub_dataset_ids[-7:-5]: return 'validation'
+        else: return 'train'
         
     elif cv_fold_number == 2:
-        if (patient_id % 5 is 0) or (patient_id % 5 is 2): return 'train'
-        if (patient_id % 5 is 3): return 'validation'
-        else: return 'test'
-        # THE TEST SET IN THIS CASE IS SPLIT AMONG THE SUB-DATASETS WITH PROMISE12 AS FOLLOWS:
-        # CAME TO LIGHT COURTESY https://liuquande.github.io/SAML/
-        # RUNMC: 11, 14, 16, 19, 21, 24 (SOME OF THESE MAY OVERLAP WITH NCI-RUNMC!!!)
-        # UCL: 01, 26, 29, 31, 34, 36
-        # BIDMC: 04, 06, 09
-        # HK: 39, 41, 44, 46, 49
+        if patient_id in sub_dataset_ids[-10:-5]: return 'test'
+        elif patient_id in sub_dataset_ids[-12:-10]: return 'validation'
+        else: return 'train'
 
 # ===============================================================
 # ===============================================================
 def count_slices_and_patient_ids_list(input_folder,
+                                      sub_dataset,
                                       cv_fold_number):
 
     num_slices = {'train': 0, 'test': 0, 'validation': 0}       
@@ -94,11 +96,22 @@ def count_slices_and_patient_ids_list(input_folder,
             if re.match(r'Case\d\d.nii.gz', filename):
                 
                 patient_id = filename[4:6]
-                train_test = test_train_val_split(int(patient_id), cv_fold_number)
-                filepath = input_folder + '/' + filename
-                patient_ids_list[train_test].append(patient_id)
-                img = utils.load_nii(filepath)[0]
-                num_slices[train_test] += img.shape[0]               
+
+                if sub_dataset == 'RUNMC':
+                    sub_dataset_ids = RUNMC_IDS
+                if sub_dataset == 'UCL':
+                    sub_dataset_ids = UCL_IDS
+                if sub_dataset == 'BIDMC':
+                    sub_dataset_ids = BIDMC_IDS
+                if sub_dataset == 'HK':
+                    sub_dataset_ids = HK_IDS
+
+                if int(patient_id) in sub_dataset_ids:
+                    train_test = test_train_val_split(int(patient_id), sub_dataset_ids, cv_fold_number)
+                    filepath = input_folder + '/' + filename
+                    patient_ids_list[train_test].append(patient_id)
+                    img = utils.load_nii(filepath)[0]
+                    num_slices[train_test] += img.shape[0]               
 
     return num_slices, patient_ids_list
 
@@ -109,6 +122,7 @@ def prepare_data(input_folder,
                  output_file,
                  size,
                  target_resolution,
+                 sub_dataset,
                  cv_fold_num):
 
     # =======================
@@ -121,8 +135,9 @@ def prepare_data(input_folder,
     # =======================
     logging.info('Counting files and parsing meta data...')    
     # using the bias corrected images in the preproc folder for this step
-    num_slices, patient_ids_list = count_slices_and_patient_ids_list(preproc_folder,
-                                                                     cv_fold_number = cv_fold_num)
+    num_slices, patient_ids_list = count_slices_and_patient_ids_list(preproc_folder + 'IndividualNIFTI/',
+                                                                     sub_dataset,
+                                                                     cv_fold_num)
         
     # =======================
     # set the number of slices according to what has been found from the previous function
@@ -133,16 +148,16 @@ def prepare_data(input_folder,
     n_val = num_slices['validation']
 
     # =======================
-    # Create datasets for images and masks
+    # Create datasets for images and labels
     # =======================
     data = {}
     for tt, num_points in zip(['test', 'train', 'validation'], [n_test, n_train, n_val]):
 
         if num_points > 0:
             data['images_%s' % tt] = hdf5_file.create_dataset("images_%s" % tt, [num_points] + list(size), dtype=np.float32)
-            data['masks_%s' % tt] = hdf5_file.create_dataset("masks_%s" % tt, [num_points] + list(size), dtype=np.uint8)
+            data['labels_%s' % tt] = hdf5_file.create_dataset("labels_%s" % tt, [num_points] + list(size), dtype=np.uint8)
 
-    mask_list = {'test': [], 'train': [], 'validation': []}
+    lbl_list = {'test': [], 'train': [], 'validation': []}
     img_list = {'test': [], 'train': [], 'validation': []}
     nx_list = {'test': [], 'train': [], 'validation': []}
     ny_list = {'test': [], 'train': [], 'validation': []}
@@ -165,9 +180,9 @@ def prepare_data(input_folder,
         for patient_id in patient_ids_list[train_test]:
             
             filepath_orig_mhd_format = input_folder + 'Case' + patient_id + '.mhd'
-            filepath_orig_nii_format = preproc_folder + 'Case' + patient_id + '.nii.gz'
-            filepath_bias_corrected_nii_format = preproc_folder + 'Case' + patient_id + '_n4.nii.gz'
-            filepath_seg_nii_format = preproc_folder + 'Case' + patient_id + '_segmentation.nii.gz'
+            filepath_orig_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '.nii.gz'
+            filepath_bias_corrected_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_n4.nii.gz'
+            filepath_seg_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_segmentation.nii.gz'
 
             patient_counter += 1
             pat_names_list[train_test].append('case' + patient_id)
@@ -197,7 +212,7 @@ def prepare_data(input_folder,
             # ================================    
             # read the labels
             # ================================    
-            mask = utils.load_nii(filepath_seg_nii_format)[0]            
+            lbl = utils.load_nii(filepath_seg_nii_format)[0]            
             
             # ================================    
             # skimage io with simple ITKplugin was used to read the images in the convert_to_nii_and_correct_bias_field function.
@@ -205,17 +220,17 @@ def prepare_data(input_folder,
             # move the axes appropriately, so that the resolution read above is correct for the corresponding axes.
             # ================================    
             img = np.swapaxes(np.swapaxes(img, 0, 1), 1, 2)
-            mask = np.swapaxes(np.swapaxes(mask, 0, 1), 1, 2)
+            lbl = np.swapaxes(np.swapaxes(lbl, 0, 1), 1, 2)
             
             # ================================    
             # write to the dimensions now
             # ================================    
-            nx_list[train_test].append(mask.shape[0])
-            ny_list[train_test].append(mask.shape[1])
-            nz_list[train_test].append(mask.shape[2])
+            nx_list[train_test].append(lbl.shape[0])
+            ny_list[train_test].append(lbl.shape[1])
+            nz_list[train_test].append(lbl.shape[2])
 
-            print('mask.shape')
-            print(mask.shape)
+            print('lbl.shape')
+            print(lbl.shape)
             print('img.shape')
             print(img.shape)
             
@@ -226,26 +241,26 @@ def prepare_data(input_folder,
             for zz in range(img.shape[2]):
 
                 slice_img = np.squeeze(img[:, :, zz])
-                slice_rescaled = transform.rescale(slice_img,
-                                                   scale_vector,
-                                                   order=1,
-                                                   preserve_range=True,
-                                                   multichannel=False,
-                                                   mode = 'constant')
+                img_rescaled = transform.rescale(slice_img,
+                                                 scale_vector,
+                                                 order=1,
+                                                 preserve_range=True,
+                                                 multichannel=False,
+                                                 mode = 'constant')
 
-                slice_mask = np.squeeze(mask[:, :, zz])
-                mask_rescaled = transform.rescale(slice_mask,
-                                                  scale_vector,
-                                                  order=0,
-                                                  preserve_range=True,
-                                                  multichannel=False,
-                                                  mode='constant')
+                slice_lbl = np.squeeze(lbl[:, :, zz])
+                lbl_rescaled = transform.rescale(slice_lbl,
+                                                 scale_vector,
+                                                 order=0,
+                                                 preserve_range=True,
+                                                 multichannel=False,
+                                                 mode='constant')
 
-                slice_cropped = utils.crop_or_pad_slice_to_size(slice_rescaled, nx, ny)
-                mask_cropped = utils.crop_or_pad_slice_to_size(mask_rescaled, nx, ny)
+                img_cropped = utils.crop_or_pad_slice_to_size(img_rescaled, nx, ny)
+                lbl_cropped = utils.crop_or_pad_slice_to_size(lbl_rescaled, nx, ny)
 
-                img_list[train_test].append(slice_cropped)
-                mask_list[train_test].append(mask_cropped)
+                img_list[train_test].append(img_cropped)
+                lbl_list[train_test].append(lbl_cropped)
 
                 write_buffer += 1
 
@@ -253,8 +268,8 @@ def prepare_data(input_folder,
                 if write_buffer >= MAX_WRITE_BUFFER:
 
                     counter_to = counter_from + write_buffer
-                    _write_range_to_hdf5(data, train_test, img_list, mask_list, counter_from, counter_to)
-                    _release_tmp_memory(img_list, mask_list, train_test)
+                    _write_range_to_hdf5(data, train_test, img_list, lbl_list, counter_from, counter_to)
+                    _release_tmp_memory(img_list, lbl_list, train_test)
 
                     # reset stuff for next iteration
                     counter_from = counter_to
@@ -264,8 +279,8 @@ def prepare_data(input_folder,
         logging.info('Writing remaining data')
         counter_to = counter_from + write_buffer
 
-        _write_range_to_hdf5(data, train_test, img_list, mask_list, counter_from, counter_to)
-        _release_tmp_memory(img_list, mask_list, train_test)
+        _write_range_to_hdf5(data, train_test, img_list, lbl_list, counter_from, counter_to)
+        _release_tmp_memory(img_list, lbl_list, train_test)
 
     # Write the small datasets
     for tt in ['test', 'train', 'validation']:
@@ -286,25 +301,25 @@ def prepare_data(input_folder,
 def _write_range_to_hdf5(hdf5_data,
                          train_test,
                          img_list,
-                         mask_list,
+                         lbl_list,
                          counter_from,
                          counter_to):
 
     logging.info('Writing data from %d to %d' % (counter_from, counter_to))
 
     img_arr = np.asarray(img_list[train_test], dtype=np.float32)
-    mask_arr = np.asarray(mask_list[train_test], dtype=np.uint8)
+    lbl_arr = np.asarray(lbl_list[train_test], dtype=np.uint8)
 
     hdf5_data['images_%s' % train_test][counter_from:counter_to, ...] = img_arr
-    hdf5_data['masks_%s' % train_test][counter_from:counter_to, ...] = mask_arr
+    hdf5_data['labels_%s' % train_test][counter_from:counter_to, ...] = lbl_arr
 
 # ===============================================================
 # Helper function to reset the tmp lists and free the memory
 # ===============================================================
-def _release_tmp_memory(img_list, mask_list, train_test):
+def _release_tmp_memory(img_list, lbl_list, train_test):
     
     img_list[train_test].clear()
-    mask_list[train_test].clear()
+    lbl_list[train_test].clear()
     gc.collect()
 
 # ===============================================================
@@ -314,12 +329,13 @@ def load_and_maybe_process_data(input_folder,
                                 size,
                                 target_resolution,
                                 force_overwrite=False,
+                                sub_dataset = 'HK', # RUNMC / UCL / BIDMC / HK
                                 cv_fold_num = 1):
 
     size_str = '_'.join([str(i) for i in size])
     res_str = '_'.join([str(i) for i in target_resolution])
 
-    data_file_name = 'data_2d_size_%s_res_%s_cv_fold_%d.hdf5' % (size_str, res_str, cv_fold_num)
+    data_file_name = 'data_2d_size_%s_res_%s_cv_fold_%d_%s.hdf5' % (size_str, res_str, cv_fold_num, sub_dataset)
 
     data_file_path = os.path.join(preprocessing_folder, data_file_name)
 
@@ -333,6 +349,7 @@ def load_and_maybe_process_data(input_folder,
                      data_file_path,
                      size,
                      target_resolution,
+                     sub_dataset,
                      cv_fold_num)
     else:
         logging.info('Already preprocessed this configuration. Loading now!')
@@ -348,8 +365,8 @@ def load_without_size_preprocessing(preproc_folder,
     # ==================
     # read bias corrected image and ground truth segmentation
     # ==================
-    filepath_bias_corrected_nii_format = preproc_folder + 'Case' + patient_id + '_n4.nii.gz'
-    filepath_seg_nii_format = preproc_folder + 'Case' + patient_id + '_segmentation.nii.gz'
+    filepath_bias_corrected_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_n4.nii.gz'
+    filepath_seg_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_segmentation.nii.gz'
     
     # ================================    
     # read bias corrected image
@@ -387,4 +404,5 @@ if __name__ == '__main__':
                                                (256, 256),
                                                (0.625, 0.625),
                                                force_overwrite=False,
+                                               sub_dataset = 'HK',
                                                cv_fold_num = 1)

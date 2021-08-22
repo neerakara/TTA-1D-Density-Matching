@@ -4,7 +4,7 @@ import tensorflow as tf
 # ======================================================================
 # train settings
 # ======================================================================
-train_dataset = 'HCPT1' # 'NCI' # CALTECH / HCPT2 / HCPT1
+train_dataset = 'RUNMC' # CALTECH / HCPT2 / HCPT1 / BMC / RUNMC
 run_number = 1
 tr_str = 'tr' + train_dataset
 run_str = '_r' + str(run_number) + '/'
@@ -30,7 +30,7 @@ model_handle_i2l = model_zoo.unet2D_i2l
 # ======================================================================
 if train_dataset == 'HCPT1':
     whole_gland_results = False
-elif train_dataset == 'NCI':
+elif train_dataset == 'BMC' or train_dataset == 'RUNMC':
     whole_gland_results = True
 normalize = True
 
@@ -73,7 +73,7 @@ if train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
     downsampling_factor_z = 1
     image_depth = 256
 
-elif train_dataset in ['NCI', 'PIRAD_ERC', 'PROMISE']:
+elif train_dataset in ['BMC', 'RUNMC', 'PIRAD_ERC', 'PROMISE']:
     nlabels = nlabels_prostate
     target_resolution = (0.625, 0.625)
     image_depth = 32
@@ -87,7 +87,7 @@ batch_size_downsampled = int(batch_size / downsampling_factor_x)
 # ======================================================================
 # max steps and frequencies for base network trainings from scratch
 # ======================================================================
-max_steps = 30001
+max_steps = 50001
 train_eval_frequency = 1000
 val_eval_frequency = 1000
 save_frequency = 1000

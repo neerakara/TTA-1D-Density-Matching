@@ -6,6 +6,7 @@ import os.path
 import tensorflow as tf
 import numpy as np
 import utils
+import utils_data
 import utils_vis
 import model as model
 import config.system_paths as sys_config
@@ -19,11 +20,12 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--train_dataset', default = "RUNMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
-parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+parser.add_argument('--test_dataset', default = "BMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
+parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
+parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
@@ -73,16 +75,14 @@ image_depth_ts = dataset_params[4]
 whole_gland_results = dataset_params[5]
 
 # ================================================================
-# Make the name for this TTA run
-# ================================================================
-exp_str = exp_config.make_tta_exp_name(args)
-
-# ================================================================
 # Setup directories for this run
 # ================================================================
 expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
-log_dir_tta = log_dir_sd + exp_str
+
+if args.NORMALIZE == 1:
+    exp_str = exp_config.make_tta_exp_name(args)
+    log_dir_tta = log_dir_sd + exp_str
 
 # ==================================================================
 # Identifier for SFDA
@@ -267,10 +267,11 @@ def main():
     # read the test images
     # ===================================
     test_dataset_name = args.test_dataset
-    loaded_test_data = utils.load_testing_data(test_dataset_name,
-                                               image_size,
-                                               target_resolution,
-                                               image_depth_ts)
+    loaded_test_data = utils_data.load_testing_data(test_dataset_name,
+                                                    args.test_cv_fold_num,
+                                                    image_size,
+                                                    target_resolution,
+                                                    image_depth_ts)
 
     imts = loaded_test_data[0]
     orig_data_res_x = loaded_test_data[2]
@@ -287,13 +288,19 @@ def main():
     # open a text file for writing the mean dice scores for each subject that is evaluated
     # ================================
     if args.NORMALIZE == 1:
+        if not tf.gfile.Exists(log_dir_tta + 'results/'):
+            tf.gfile.MakeDirs(log_dir_tta + 'results/')
         if args.TTA_or_SFDA == 'TTA':
-            results_filename = log_dir_tta + test_dataset_name + '_test'
+            results_filename = log_dir_tta + 'results/' + test_dataset_name + '_test'
         elif args.TTA_or_SFDA == 'SFDA':
-            results_filename = log_dir_tta + td_string + test_dataset_name + '_test'
+            results_filename = log_dir_tta + 'results/' + td_string + test_dataset_name + '_test'
     else:
-        results_filename = log_dir_sd + test_dataset_name + '_test'
+        if not tf.gfile.Exists(log_dir_sd + 'results/'):
+            tf.gfile.MakeDirs(log_dir_sd + 'results/')
+        results_filename = log_dir_sd + 'results/' + test_dataset_name + '_test'
     
+    results_filename = results_filename + '_cv' + str(args.test_cv_fold_num)
+
     if whole_gland_results == True:
         results_filename = results_filename + '_whole_gland'
     
@@ -337,11 +344,11 @@ def main():
         # ==================================================================
         # read the original segmentation mask
         # ==================================================================
-        image_orig, labels_orig, num_rotations = utils.load_testing_data_wo_preproc(test_dataset_name,
-                                                                                    ids,
-                                                                                    sub_num,
-                                                                                    subject_name,
-                                                                                    image_depth_ts)
+        image_orig, labels_orig, num_rotations = utils_data.load_testing_data_wo_preproc(test_dataset_name,
+                                                                                         ids,
+                                                                                         sub_num,
+                                                                                         subject_name,
+                                                                                         image_depth_ts)
 
         # ==================================================================
         # convert the predicitons back to original resolution
@@ -359,11 +366,11 @@ def main():
         # ==================================================================
         if args.NORMALIZE == 1:
             if args.TTA_or_SFDA == 'TTA':
-                savepath = log_dir_tta + test_dataset_name + '_test_' + subject_name
+                savepath = log_dir_tta + 'results/' + test_dataset_name + '_test_' + subject_name
             elif args.TTA_or_SFDA == 'SFDA':
-                savepath = log_dir_tta + td_string + test_dataset_name + '_test_' + subject_name
+                savepath = log_dir_tta + 'results/' + td_string + test_dataset_name + '_test_' + subject_name
         else:
-            savepath = log_dir_sd + test_dataset_name + '_test_' + subject_name
+            savepath = log_dir_sd + 'results/' + test_dataset_name + '_test_' + subject_name
 
         # ==================================================================
         # If only whole-gland comparisions are desired, merge the labels in both ground truth segmentations as well as the predictions
@@ -401,10 +408,11 @@ def main():
         # ================================================================
         # save sample results
         # ================================================================
-        save_visual_results = False
+        save_visual_results = True
         if save_visual_results == True:
             d_vis = 32 # 256
-            ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
+            # ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
+            ids_vis = [d_vis // 2]
             utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
                                                     x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
                                                     y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),

@@ -9,7 +9,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 import model as model
-import config.system as sys_config
+import config.system_paths as sys_config
 
 import data.data_hcp as data_hcp
 import data.data_abide as data_abide
@@ -97,7 +97,7 @@ def run_training(continue_run):
                                                               target_resolution = target_resolution)
         imvl, gtvl = [ data_brain_val['images'], data_brain_val['labels'] ]
         
-    if exp_config.train_dataset is 'HCPT2':
+    elif exp_config.train_dataset is 'HCPT2':
         logging.info('Reading HCPT2 images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
         data_brain_train = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
@@ -146,18 +146,19 @@ def run_training(continue_run):
         imvl, gtvl = [ data_brain_val['images'], data_brain_val['labels'] ]
         
     # PROSTATE
-    elif exp_config.train_dataset is 'NCI':
-        logging.info('Reading NCI images...')    
+    elif exp_config.train_dataset is 'RUNMC' or exp_config.train_dataset is 'BMC':
+        logging.info('Reading NCI - ' + exp_config.train_dataset + ' images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
         data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
                                                          preprocessing_folder = sys_config.preproc_folder_nci,
                                                          size = image_size,
                                                          target_resolution = target_resolution,
                                                          force_overwrite = False,
+                                                         sub_dataset = exp_config.train_dataset,
                                                          cv_fold_num = 1)
         
-        imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
-        imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
+        imtr, gttr = [ data_pros['images_train'], data_pros['labels_train'] ]
+        imvl, gtvl = [ data_pros['images_validation'], data_pros['labels_validation'] ]
         
     elif exp_config.train_dataset is 'PROMISE':
         logging.info('Reading PROMISE images...')    
@@ -252,7 +253,8 @@ def run_training(continue_run):
         # ================================================================
         logits, _, _ = model.predict_i2l(images_normalized,
                                          exp_config,
-                                         training_pl = training_pl)
+                                         training_pl = training_pl,
+                                         nlabels = nlabels)
         
         print('shape of inputs: ', images_pl.shape) # (batch_size, 256, 256, 1)
         print('shape of logits: ', logits.shape) # (batch_size, 256, 256, nlabels)

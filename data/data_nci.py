@@ -23,9 +23,9 @@ def test_train_val_split(patient_id,
     if cv_fold_number == 1:
 
         if sub_dataset == 'RUNMC':
-            if patient_id < 16:
+            if patient_id < 26: # 16
                 return 'train'
-            elif patient_id < 21:
+            elif patient_id < 31: # 31
                 return 'validation'
             else:
                 return 'test'
@@ -326,7 +326,7 @@ def prepare_data(input_folder,
         hdf5_file.create_dataset('px_%s' % tt, data=np.asarray(px_list[tt], dtype=np.float32))
         hdf5_file.create_dataset('py_%s' % tt, data=np.asarray(py_list[tt], dtype=np.float32))
         hdf5_file.create_dataset('pz_%s' % tt, data=np.asarray(pz_list[tt], dtype=np.float32))
-        hdf5_file.create_dataset('patnames_%s' % tt, data=np.asarray(pat_names_list[tt], dtype="S10"))
+        hdf5_file.create_dataset('patnames_%s' % tt, data=np.asarray(pat_names_list[tt], dtype="S20"))
     
     # After test train loop:
     hdf5_file.close()
@@ -394,47 +394,40 @@ def load_and_maybe_process_data(input_folder,
 
 # ===============================================================
 # function to read a single subjects image and labels without any pre-processing
-# TODO this function is still to be modified after the changes which make the rest of the functions in this file work for both subdatasets (RUNMC and BMC).
 # ===============================================================
 def load_without_size_preprocessing(input_folder,
+                                    preprocessing_folder,
+                                    sub_dataset,
                                     cv_fold_num,
                                     train_test,
                                     idx):
     
-    # ===============================
-    # read all the patient folders from the base input folder
-    # ===============================
-    image_folder = os.path.join(input_folder, 'Prostate-3T')
-    label_folder = os.path.join(input_folder, 'NCI_ISBI_Challenge-Prostate3T_Training_Segmentations')
-    folder_list = get_patient_folders(image_folder,
-                                      folder_base='Prostate3T-01',
-                                      cv_fold_number = cv_fold_num)
+    # =======================
+    # =======================
+    if sub_dataset == 'RUNMC':
+        image_folder = input_folder + 'Images/Prostate-3T/'
+        folder_base = 'Prostate3T'
+    elif sub_dataset == 'BMC':
+        image_folder = input_folder + 'Images/PROSTATE-DIAGNOSIS/'
+        folder_base = 'ProstateDx'
+
+    # =======================
+    # =======================
+    folder_list = get_patient_folders(image_folder, folder_base, sub_dataset, cv_fold_num)
     folder = folder_list[train_test][idx]
-
-    # ==================
-    # make a list of all dcm images for this subject
-    # ==================                        
-    lstFilesDCM = []  # create an empty list
-    for dirName, subdirList, fileList in os.walk(folder):
-        for filename in fileList:
-            if ".dcm" in filename.lower():  # check whether the file's DICOM
-                lstFilesDCM.append(os.path.join(dirName, filename))
-                
-    # ==================
-    # read bias corrected image
-    # ==================
-    nifti_img_path = lstFilesDCM[0][:lstFilesDCM[0].rfind('/')+1]
-    image = utils.load_nii(img_path = nifti_img_path + 'img_n4.nii.gz')[0]
+    patname = folder_base + '-' + str(folder.split('-')[-2]) + '-' + str(folder.split('-')[-1])
+    nifti_img_path = preprocessing_folder + 'Individual_NIFTI/' + patname
 
     # ============
-    # normalize the image to be between 0 and 1
+    # read the image and normalize the image to be between 0 and 1
     # ============
+    image = utils.load_nii(img_path = nifti_img_path + '_img_n4.nii.gz')[0]
     image = utils.normalise_image(image, norm_type='div_by_max')
 
     # ==================
     # read the label file
     # ==================        
-    label = utils.load_nii(img_path = nifti_img_path + 'lbl.nii.gz')[0]
+    label = utils.load_nii(img_path = nifti_img_path + '_lbl.nii.gz')[0]
     
     return image, label
 
