@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
 parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC
-parser.add_argument('--tr_run_number', type = int, default = 0) # 1
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1
 # Batch settings
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0

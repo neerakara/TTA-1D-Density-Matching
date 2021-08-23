@@ -426,6 +426,20 @@ def save_tmp_and_load(sd_means,
 
 # ================================================================
 # ================================================================
+def save_1d_pdfs(gauss_params,
+                 kde,
+                 xaxis_range,
+                 savepath):
+
+    plt.figure(figsize=[5,5])
+    x = np.arange(xaxis_range[0], xaxis_range[1] + xaxis_range[2], xaxis_range[2])
+    plt.plot(x, norm.pdf(x, gauss_params[0], np.sqrt(gauss_params[1])), 'r')
+    plt.plot(x, kde / (np.sum(kde)*xaxis_range[2]), 'b') # normalize KDE before plotting
+    plt.savefig(savepath)
+    plt.close()
+
+# ================================================================
+# ================================================================
 def write_pdfs(step,
                summary_writer,
                sess,
