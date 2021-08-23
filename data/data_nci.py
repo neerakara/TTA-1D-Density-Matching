@@ -23,17 +23,17 @@ def test_train_val_split(patient_id,
     if cv_fold_number == 1:
 
         if sub_dataset == 'RUNMC':
-            if patient_id < 26: # 16
+            if patient_id < 16: # 26
                 return 'train'
-            elif patient_id < 31: # 31
+            elif patient_id < 21: # 31
                 return 'validation'
             else:
                 return 'test'
 
         if sub_dataset == 'BMC':
-            if patient_id < 74: # 45
+            if patient_id < 45: # 74
                 return 'train'
-            elif patient_id < 83: # 59
+            elif patient_id < 59: # 83
                 return 'validation'
             else:
                 return 'test'
@@ -61,11 +61,12 @@ def count_slices(image_folder,
                                                           cv_fold_number)
                         num_slices[train_test] += 1
 
-        elif folder.startswith(folder_base + '-02') or folder.startswith(folder_base + '-03'):
-            for _, _, fileList in os.walk(os.path.join(image_folder, folder)):
-                for filename in fileList:
-                    if filename.lower().endswith('.dcm'):  # check whether the file's DICOM
-                        num_slices['test'] += 1
+        # IGNORE -02 and -03 for now
+        # elif folder.startswith(folder_base + '-02') or folder.startswith(folder_base + '-03'):
+        #     for _, _, fileList in os.walk(os.path.join(image_folder, folder)):
+        #         for filename in fileList:
+        #             if filename.lower().endswith('.dcm'):  # check whether the file's DICOM
+        #                 num_slices['test'] += 1
 
     return num_slices
 
@@ -87,8 +88,9 @@ def get_patient_folders(image_folder,
             train_test = test_train_val_split(patient_id, sub_dataset, cv_fold_number)
             folder_list[train_test].append(os.path.join(image_folder, folder))
 
-        elif folder.startswith(folder_base + '-02') or folder.startswith(folder_base + '-03'):
-            folder_list['test'].append(os.path.join(image_folder, folder))
+        # IGNORE -02 and -03 for now
+        # elif folder.startswith(folder_base + '-02') or folder.startswith(folder_base + '-03'):
+        #     folder_list['test'].append(os.path.join(image_folder, folder))
 
     return folder_list
 
