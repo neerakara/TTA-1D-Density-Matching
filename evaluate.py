@@ -23,43 +23,35 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "RUNMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "BMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
+parser.add_argument('--test_dataset', default = "UCL") # BMC / RUNMC / UCL / HK / BIDMC / USZ
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
+parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+
 # TTA options
-parser.add_argument('--tta_string', default = "TTA/")
-parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
-# Whether to compute KDE or not?
-parser.add_argument('--KDE', type = int, default = 1) # 0 to 1
-parser.add_argument('--alpha', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
-parser.add_argument('--KDE_Groups', type = int, default = 1) # 0 / 1
-parser.add_argument('--IGNORE_PADDING', type = int, default = 1) # 0 / 1
-# PCA settings
-parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16 / 32 / 64
-parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 / 16
-parser.add_argument('--PCA_NUM_LATENTS', type = int, default = 10) # 5 / 10 / 50
-parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
-parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 1.0 / 0.1 / 0.01 
+parser.add_argument('--tta_string', default = "tta/")
+# Whether to use Gaussians / KDEs
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
+# If KDEs, what smoothing parameter
+parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
-parser.add_argument('--tta_vars', default = "NORM") # BN / NORM
+parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
+
 # How many moments to match and how?
-parser.add_argument('--match_moments', default = "All_KL") # Gaussian_KL / All_KL / All_CF_L2
-parser.add_argument('--before_or_after_bn', default = "AFTER") # AFTER / BEFORE
-parser.add_argument('--KL_ORDER', default = "sd_vs_td") # sd_vs_td / td_vs_sd
+parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
+parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
+# Matching settings
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
-# Matching settings
-parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
-# Re-INIT TTA vars?
-parser.add_argument('--tta_init_from_scratch', type = int, default = 0) # 0 / 1
-# SFDA options
-parser.add_argument('--TTA_or_SFDA', default = "TTA") # TTA / SFDA
-parser.add_argument('--PROMISE_SUB_DATASET', default = "RUNMC") # RUNMC / UCL / BIDMC / HK (doesn't matter for TTA)
+parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
+
 # parse arguments
 args = parser.parse_args()
 
@@ -83,15 +75,6 @@ log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 if args.NORMALIZE == 1:
     exp_str = exp_config.make_tta_exp_name(args)
     log_dir_tta = log_dir_sd + exp_str
-
-# ==================================================================
-# Identifier for SFDA
-# ==================================================================
-if args.TTA_or_SFDA == 'SFDA':
-    if args.test_dataset == 'USZ':
-        td_string = 'SFDA_' + args.test_dataset + '/'
-    elif args.test_dataset == 'PROMISE':    
-        td_string = 'SFDA_' + args.test_dataset + '_' + args.PROMISE_SUB_DATASET + '/'
 
 # ==================================================================
 # main function for inference
@@ -142,9 +125,9 @@ def predict_segmentation(subject_name,
             if 'beta' in var_name or 'gamma' in var_name:
                 bn_vars.append(v)
 
-        if args.tta_vars == 'BN':
+        if args.TTA_VARS == 'BN':
             tta_vars = bn_vars
-        elif args.tta_vars == 'NORM':
+        elif args.TTA_VARS == 'NORM':
             tta_vars = normalization_vars
                                 
         # ================================================================
@@ -187,11 +170,8 @@ def predict_segmentation(subject_name,
         # ================================================================
         if normalize == 1:
             logging.info('============================================================')
-            if args.TTA_or_SFDA == 'TTA':
-                subject_string = args.test_dataset + '_' + subject_name + '/'
-                path_to_model = log_dir_tta + subject_string + 'models/'
-            elif args.TTA_or_SFDA == 'SFDA':
-                path_to_model = log_dir_tta + td_string + 'models/'
+            subject_string = args.test_dataset + '_' + subject_name + '/'
+            path_to_model = log_dir_tta + subject_string + 'models/'
 
             checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
             logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
@@ -290,10 +270,7 @@ def main():
     if args.NORMALIZE == 1:
         if not tf.gfile.Exists(log_dir_tta + 'results/'):
             tf.gfile.MakeDirs(log_dir_tta + 'results/')
-        if args.TTA_or_SFDA == 'TTA':
-            results_filename = log_dir_tta + 'results/' + test_dataset_name + '_test'
-        elif args.TTA_or_SFDA == 'SFDA':
-            results_filename = log_dir_tta + 'results/' + td_string + test_dataset_name + '_test'
+        results_filename = log_dir_tta + 'results/' + test_dataset_name + '_test'
     else:
         if not tf.gfile.Exists(log_dir_sd + 'results/'):
             tf.gfile.MakeDirs(log_dir_sd + 'results/')
@@ -333,6 +310,11 @@ def main():
         if args.NORMALIZE == 1:
             if not tf.gfile.Exists(log_dir_tta + test_dataset_name + '_' + subject_name + '/models/'):
                 continue
+            # # If the folder exists, ensure that the TTA was run for the total number of requested iterations
+            # if os.path.isfile(log_dir_tta + test_dataset_name + '_' + subject_name + '/models/model.ckpt-999.meta'):
+            #     logging.info("All TTA iterations ran successfully.")
+            # else:
+            #     logging.info("Seems to be a problem! All TTA iterations did not run successfully!!")
     
         # ==================================================================
         # predict segmentation at the pre-processed resolution
@@ -365,10 +347,7 @@ def main():
         # Name of visualization
         # ==================================================================
         if args.NORMALIZE == 1:
-            if args.TTA_or_SFDA == 'TTA':
-                savepath = log_dir_tta + 'results/' + test_dataset_name + '_test_' + subject_name
-            elif args.TTA_or_SFDA == 'SFDA':
-                savepath = log_dir_tta + 'results/' + td_string + test_dataset_name + '_test_' + subject_name
+            savepath = log_dir_tta + 'results/' + test_dataset_name + '_test_' + subject_name
         else:
             savepath = log_dir_sd + 'results/' + test_dataset_name + '_test_' + subject_name
 

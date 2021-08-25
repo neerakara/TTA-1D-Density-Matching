@@ -195,7 +195,7 @@ def load_testing_data(test_dataset,
         orig_data_siz_y = data_pros['ny'][:]
         orig_data_siz_z = data_pros['nz'][:]
         name_test_subjects = data_pros['patnames']
-        num_test_subjects = orig_data_siz_z.shape[0] 
+        num_test_subjects = 10 # orig_data_siz_z.shape[0] 
         ids = np.arange(idx_start, idx_end)
 
     # ================================================================

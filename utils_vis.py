@@ -335,10 +335,9 @@ def write_gaussians(step,
                     td_mu,
                     td_var,
                     savedir,
-                    logits_present,
                     nlabels,
-                    deltas = [0, 32, 96, 224, 480, 608, 672],
-                    num_channels = 5):
+                    deltas = [0, 32, 96, 224, 480, 608, 672, 704],
+                    num_channels = 3):
 
     # stitch images
     stitched_image = stitch_gaussians(sd_mu,
@@ -346,7 +345,6 @@ def write_gaussians(step,
                                       td_mu,
                                       td_var,
                                       savedir,
-                                      logits_present,
                                       nlabels,
                                       deltas,
                                       num_channels)
@@ -365,20 +363,13 @@ def stitch_gaussians(sd_means,
                      td_means,
                      td_variances,
                      savedir,
-                     logits_present,
                      nlabels,
                      deltas,
                      num_channels):
         
     nx = 150
     ny = 150
-
-    if logits_present == 0:
-        # show first 5 channels for all the 7 layers (c1_1, c2_1, c3_1, c4_1, c5_1, c6_1, c7_1)
-        stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
-    else:
-        # show logit distributions as well
-        stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
+    stitched_image = np.zeros((num_channels*nx, len(deltas)*ny), dtype = np.float32)
 
     sy = 0
     for delta in deltas:                
@@ -391,18 +382,6 @@ def stitch_gaussians(sd_means,
                                                                                  delta+c,
                                                                                  savedir)
         sy = sy+1
-
-    if logits_present == 1:
-        delta = 704
-        for c in range(nlabels):
-            if c < 5:
-                sx = c
-                stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_and_load(sd_means,
-                                                                                     sd_variances,
-                                                                                     td_means,
-                                                                                     td_variances,
-                                                                                     delta+c,
-                                                                                     savedir)
 
     return stitched_image
 
@@ -448,14 +427,14 @@ def write_pdfs(step,
                pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-               pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+               # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                savedir):
 
     # stitch images
     stitched_image = stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                                  pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                                  pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-                                 pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+                                 # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                                  savedir)
     
     # make shape and type like tensorboard wants
@@ -470,7 +449,7 @@ def write_pdfs(step,
 def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                 pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                 pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-                pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+                # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                 savedir):
         
     nx = 150
@@ -486,27 +465,47 @@ def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
     for delta in [0, 32, 96, 480, 608, 672]:
         for c in range(num_channels_per_layer):
             sx = c
-            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1, delta+c, savedir)
+            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g1_mu,
+                                                                                     pdfs_SD_g1_std,
+                                                                                     pdfs_TD_g1,
+                                                                                     x_g1,
+                                                                                     delta+c,
+                                                                                     savedir)
         sy = sy+1
 
     # visualize group 2 channels (7_2)
     for c in range(num_channels_per_layer):
         sx = c
-        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2, c, savedir)
+        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g2_mu,
+                                                                                 pdfs_SD_g2_std,
+                                                                                 pdfs_TD_g2,
+                                                                                 x_g2,
+                                                                                 c,
+                                                                                 savedir)
     sy = sy+1
 
-    # visualize group 3 channels (logits)
+    # visualize group 3 channels (softmax)
     for c in range(num_channels_per_layer):
         if c < pdfs_TD_g3.shape[0]:
             sx = c
-            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3, c, savedir)
+            stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_g3_mu,
+                                                                                     pdfs_SD_g3_std,
+                                                                                     pdfs_TD_g3,
+                                                                                     x_g3,
+                                                                                     c,
+                                                                                     savedir)
     sy = sy+1
 
-    # visualize pca 1st latent component of first 5 channels of 7_2
-    for c in range(num_channels_per_layer):
-        sx = c
-        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z, 10*c, savedir) # num_pca_latents = 10
-    sy = sy+1
+    # # visualize pca 1st latent component of first 5 channels of 7_2
+    # for c in range(num_channels_per_layer):
+    #     sx = c
+    #     stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_pca_mu,
+    #                                                                              pdfs_SD_pca_std,
+    #                                                                              pdfs_TD_pca,
+    #                                                                              z,
+    #                                                                              10*c,
+    #                                                                              savedir) # num_pca_latents = 10
+    # sy = sy+1
 
     return stitched_image
 

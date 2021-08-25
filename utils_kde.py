@@ -312,9 +312,9 @@ def sample_sd_points(pdfs_sd_this_step,
 def compute_kl_between_kdes(sd_pdfs,
                             td_pdfs,
                             x_indices_lebesgue = None,
-                            order = 'sd_vs_td'):
+                            order = 'SD_vs_TD'):
 
-    if order == 'sd_vs_td':
+    if order == 'SD_vs_TD':
         # (via Riemann integral)
         if x_indices_lebesgue == None:
             loss_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(sd_pdfs,
@@ -326,7 +326,7 @@ def compute_kl_between_kdes(sd_pdfs,
             loss_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.log(tf.math.divide(tf.gather_nd(sd_pdfs, x_indices_lebesgue),
                                                                                  tf.gather_nd(td_pdfs, x_indices_lebesgue) + 1e-5) + 1e-2), axis = 1))
 
-    elif order == 'td_vs_sd':
+    elif order == 'TD_vs_SD':
         # (via Riemann integral)
         if x_indices_lebesgue == None:
             loss_kl_op = tf.reduce_mean(tf.reduce_sum(tf.math.multiply(td_pdfs,
@@ -347,12 +347,12 @@ def compute_kl_between_gaussian(mu_sd,
                                 var_sd,
                                 mu_td,
                                 var_td,
-                                order = 'sd_vs_td'):
+                                order = 'SD_vs_TD'):
 
-    if order == 'sd_vs_td':
+    if order == 'SD_vs_TD':
         loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_td / var_sd) + (var_sd + (mu_sd - mu_td)**2) / var_td)
 
-    elif order == 'td_vs_sd':
+    elif order == 'TD_vs_SD':
         loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_sd / var_td) + (var_td + (mu_td - mu_sd)**2) / var_sd)
 
     return loss_gaussian_kl_op

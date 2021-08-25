@@ -154,35 +154,31 @@ def get_dataset_dependent_params(train_dataset, test_dataset = ''):
 # Function to make the name for the experiment run according to TTA parameters
 # ================================================================
 def make_tta_exp_name(args):
-    exp_str = args.tta_string + 'KDE' + str(args.KDE) # Whether using KDE as an intermediate step or not 
     
-    if args.KDE == 1:
-        exp_str = exp_str + '/Alpha' + str(args.alpha) # If KDE is used, what's the smoothness parameter?
-        exp_str = exp_str + '_Groups' + str(args.KDE_Groups) # While computing the KDEs, are the channels divided into groups with different intensity domains
-    elif args.KDE == 0:
-        exp_str = exp_str + '/' + str(args.before_or_after_bn) + '_BN' # Gaussians computed before (using params stored in BN layers) or after BN
+    exp_str = args.tta_string + args.PDF_TYPE # Gaussian / KDE / KDE_PCA
     
-    exp_str = exp_str + '/' + args.match_moments # Gaussian_KL / All_KL
-    exp_str = exp_str + '_' + args.KL_ORDER # sd_vs_td / td_vs_sd
+    if args.PDF_TYPE == 'KDE' or args.PDF_TYPE == 'KDE_PCA':
+        exp_str = exp_str + '/Alpha' + str(args.KDE_ALPHA) # If KDE is used, what's the smoothness parameter?
+    
+    exp_str = exp_str + '/' + args.LOSS_TYPE # KL / 
 
-    exp_str = exp_str + '/PCA' + str(args.PCA_PSIZE) + '_lambda' + str(args.PCA_LAMBDA)
+    if args.KL_ORDER == 'TD_vs_SD':
+        exp_str = exp_str + '_' + args.KL_ORDER
+    elif args.KL_ORDER == 'SD_vs_TD': # default
+        exp_str = exp_str
 
-    exp_str = exp_str + '/Vars' + args.tta_vars 
+    exp_str = exp_str + '/Vars' + args.TTA_VARS 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
     exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
     
-    exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) # Matching with mean over SD subjects or taking expectation wrt SD subjects
-    if args.IGNORE_PADDING == 1:
-        exp_str = exp_str + '_ignore_padding'
+    # Matching with mean over SD subjects or taking expectation wrt SD subjects
+    exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) 
     
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
     exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
-    
-    if args.tta_init_from_scratch == 1:
-        exp_str = exp_str + '/Reinit_before_TTA'
-    
+        
     exp_str = exp_str + '/'
 
     return exp_str
