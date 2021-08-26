@@ -157,6 +157,7 @@ def make_tta_exp_name(args):
     
     exp_str = args.tta_string + args.PDF_TYPE # Gaussian / KDE / KDE_PCA
     
+    # loss function
     if args.PDF_TYPE == 'KDE' or args.PDF_TYPE == 'KDE_PCA':
         exp_str = exp_str + '/Alpha' + str(args.KDE_ALPHA) # If KDE is used, what's the smoothness parameter?
     
@@ -167,6 +168,10 @@ def make_tta_exp_name(args):
     elif args.KL_ORDER == 'SD_vs_TD': # default
         exp_str = exp_str
 
+    if args.PCA_LAMBDA > 0.0:
+        exp_str = exp_str + '/' + make_pca_dir_name(args)[:-1] + '_lambda' + str(args.PCA_LAMBDA)
+
+    # optimization details
     exp_str = exp_str + '/Vars' + args.TTA_VARS 
     exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
     exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
@@ -175,6 +180,7 @@ def make_tta_exp_name(args):
     # Matching with mean over SD subjects or taking expectation wrt SD subjects
     exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) 
     
+    # learning rate parameters
     exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
     exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
     exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number

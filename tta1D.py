@@ -28,6 +28,7 @@ import logging
 import os.path
 import argparse
 import numpy as np
+import pickle as pk
 import tensorflow as tf
 import sklearn.metrics as met
 
@@ -64,7 +65,7 @@ parser.add_argument('--tta_string', default = "tta/")
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # How many moments to match and how?
@@ -72,6 +73,15 @@ parser.add_argument('--LOSS_TYPE', default = "KL") # KL /
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+
+# PCA settings
+parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
+parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
+parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
+parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
+parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16) 
@@ -315,6 +325,92 @@ with tf.Graph().as_default():
         loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_kdes_g1_pl, td_kdes_g1, order = args.KL_ORDER)
         loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = args.KL_ORDER)
         loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = args.KL_ORDER)
+
+        # ================================================================
+        # PCA
+        # ================================================================
+
+        # =============
+        # Combine the softmax scores into a map of foreground probabilities
+        # =============
+        features_fg_probs = tf.expand_dims(tf.math.reduce_max(softmax[:, :, :, 1:], axis=-1), axis=-1)
+
+        # =============
+        # Extract patches
+        # =============
+        patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
+                                                        channel = 0, 
+                                                        psize = args.PCA_PSIZE,
+                                                        stride = args.PCA_STRIDE)        
+
+        # =============
+        # Get indices of active patches
+        # =============
+        indices_active_patches = tf.squeeze(tf.where(patches_fg_probs[:, (args.PCA_PSIZE * (args.PCA_PSIZE + 1)) // 2] > args.PCA_THRESHOLD))
+
+        # =============
+        # Compute features from layer 7_2
+        # =============
+        features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
+
+        # =============
+        # Define PCA PLACEHOLDERS
+        # =============
+        # for loading saved PCA details
+        pca_mean_features_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_mean')
+        pca_components_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM, args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_principal_comps')
+        pca_variance_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM], name = 'pca_variances')
+        # for points at which the PDFs are evaluated
+        z_kde_pl = tf.placeholder(tf.float32, shape = [101], name = 'z_kdes') # shape [num_points_along_intensity_range]
+        # for sd KDEs of latents
+        kde_latents_sd_pl = tf.placeholder(tf.float32, shape = [160, 101], name = 'kde_latents_sd') # shape [num_channels*pca_latent_dim, num_points_along_intensity_range]
+        # for weight of pca kde matching loss
+        lambda_pca_pl = tf.placeholder(tf.float32, shape = [], name = 'lambda_pca') # shape [1]
+
+        # =============
+        # Compute KDE for each channel of features
+        # =============
+        for c in range(features_td.shape[-1]):
+            patches_features_td_c = utils_kde.extract_patches(features_td,
+                                                              channel = c,
+                                                              psize = args.PCA_PSIZE,
+                                                              stride = args.PCA_STRIDE)
+
+            # =============
+            # select active patches
+            # =============
+            patches_features_td_c_active = tf.gather(patches_features_td_c,
+                                                     indices_active_patches,
+                                                     axis=0)
+
+            # =============
+            # compute PCA latent representation of these patches
+            # =============
+            latent_of_active_patches_td_c = utils_kde.compute_pca_latents(patches_features_td_c_active, # [num_patches, psize*psize]
+                                                                          tf.gather(pca_mean_features_pl, c, axis=0), # [pca.mean_ --> [psize*psize]]
+                                                                          tf.gather(pca_components_pl, c, axis=0), # [pca.components_ --> [num_components, psize*psize]]
+                                                                          tf.gather(pca_variance_pl, c, axis=0)) # [pca.explained_variance_ --> [num_components]]
+            # =============
+            # concat to array containing the latent reps for all channels of the last layer
+            # =============
+            if c == 0:
+                latent_of_active_patches_td = latent_of_active_patches_td_c
+            else:
+                latent_of_active_patches_td = tf.concat([latent_of_active_patches_td, latent_of_active_patches_td_c], -1)
+
+        # =============
+        # compute per-dimension KDE of the latents
+        # =============
+        kde_latents_td = utils_kde.compute_pca_latent_kdes_tf(latent_of_active_patches_td, # [num_samples, num_pca_latents * num_channels]
+                                                              z_kde_pl,
+                                                              args.PCA_KDE_ALPHA)
+
+        # =============
+        # KL loss between SD and TD KDEs
+        # =============
+        loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl,
+                                                           kde_latents_td,
+                                                           order = args.KL_ORDER)
         
         # =================================
         # Total loss
@@ -323,7 +419,7 @@ with tf.Graph().as_default():
         ncg2 = 16
         ncg3 = nlabels
         loss_all_kl_op = (ncg1 * loss_all_kl_g1_op + ncg2 * loss_all_kl_g2_op + ncg3 * loss_all_kl_g3_op) / (ncg1 + ncg2 + ncg3)
-        loss_op = loss_all_kl_op
+        loss_op = loss_all_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
                 
         # ================================================================
         # add losses to tensorboard
@@ -332,6 +428,7 @@ with tf.Graph().as_default():
         tf.summary.scalar('loss/KDE_KL_G1', loss_all_kl_g1_op)
         tf.summary.scalar('loss/KDE_KL_G2', loss_all_kl_g2_op)
         tf.summary.scalar('loss/KDE_KL_G3', loss_all_kl_g3_op)
+        tf.summary.scalar('loss/KDE_KL_PCA', loss_pca_kl_op)
         tf.summary.scalar('loss/KDE_KL', loss_all_kl_op)
         summary_during_tta = tf.summary.merge_all()
     
@@ -440,15 +537,45 @@ with tf.Graph().as_default():
         kde_g1_params = [-3.0, 3.0, 0.1]
         kde_g2_params = [-5.0, 5.0, 0.1]
         kde_g3_params = [0.0, 1.0, 0.01]
+        kde_z_params = [-5.0, 5.0, 0.1]
 
         # make array of points where the KDEs have to be evaluated
         x_values_g1 = np.arange(kde_g1_params[0], kde_g1_params[1] + kde_g1_params[2], kde_g1_params[2])
         x_values_g2 = np.arange(kde_g2_params[0], kde_g2_params[1] + kde_g2_params[2], kde_g2_params[2])
         x_values_g3 = np.arange(kde_g3_params[0], kde_g3_params[1] + kde_g3_params[2], kde_g3_params[2])
+        z_values = np.arange(kde_z_params[0], kde_z_params[1] + kde_z_params[2], kde_z_params[2])
 
         kdes_sd_g1 = np.load(log_dir_pdfs + exp_config.make_sd_kde_name(b_size_compute_sd_pdfs, args.KDE_ALPHA, kde_g1_params) + '_g1.npy')
         kdes_sd_g2 = np.load(log_dir_pdfs + exp_config.make_sd_kde_name(b_size_compute_sd_pdfs, args.KDE_ALPHA, kde_g2_params) + '_g2.npy')
         kdes_sd_g3 = np.load(log_dir_pdfs + exp_config.make_sd_kde_name(b_size_compute_sd_pdfs, args.KDE_ALPHA, kde_g3_params) + '_g3.npy')
+
+        # =============================
+        # LOAD PCA RESULTS
+        # =============================            
+        pca_dir = log_dir_pdfs + exp_config.make_pca_dir_name(args)        
+        num_pca_channels = 16
+        pca_means = []
+        pca_pcs = []
+        pca_vars = []
+
+        for c in range(num_pca_channels):
+
+            # load pca components, mean, variances
+            pca_c = pk.load(open(pca_dir + 'c' + str(c) + '.pkl', 'rb'))
+            pca_means.append(pca_c.mean_)
+            pca_pcs.append(pca_c.components_)
+            pca_vars.append(pca_c.explained_variance_)
+
+            # load sd kdes
+            pca_latent_sd_kdes_c = np.load(pca_dir + 'c' + str(c) + '_kde_alpha' + str(args.PCA_KDE_ALPHA) + '.npy') # [num_sd_subjects, num_latents, num_z_values]
+            if c == 0:
+                pca_latent_sd_kdes = pca_latent_sd_kdes_c
+            else:
+                pca_latent_sd_kdes = np.concatenate((pca_latent_sd_kdes, pca_latent_sd_kdes_c), axis=1)
+
+        pca_means = np.array(pca_means)
+        pca_pcs = np.array(pca_pcs)
+        pca_vars = np.array(pca_vars)
 
     # ===================================
     # TTA / SFDA iterations
@@ -487,6 +614,7 @@ with tf.Graph().as_default():
                 sd_kdes_g1_this_step = np.mean(kdes_sd_g1, axis = 0)
                 sd_kdes_g2_this_step = np.mean(kdes_sd_g2, axis = 0)
                 sd_kdes_g3_this_step = np.mean(kdes_sd_g3, axis = 0)
+                sd_kde_latents_this_step = np.mean(pca_latent_sd_kdes, axis = 0)
             elif args.PDF_TYPE == 'GAUSSIAN':
                 sd_gaussian_this_step = np.mean(gaussians_sd, axis=0)
 
@@ -497,6 +625,7 @@ with tf.Graph().as_default():
                 sd_kdes_g1_this_step = kdes_sd_g1[sub_id, :, :]
                 sd_kdes_g2_this_step = kdes_sd_g2[sub_id, :, :]
                 sd_kdes_g3_this_step = kdes_sd_g3[sub_id, :, :]
+                sd_kde_latents_this_step = pca_latent_sd_kdes[sub_id, :, :]
             elif args.PDF_TYPE == 'GAUSSIAN':
                 sub_id = np.random.randint(gaussians_sd.shape[0])
                 sd_gaussian_this_step = gaussians_sd[sub_id, :, :]
@@ -519,7 +648,13 @@ with tf.Graph().as_default():
                            alpha_pl: args.KDE_ALPHA,
                            lr_pl: tta_learning_rate,
                            delta_x_pl: padding_x,
-                           delta_y_pl: padding_y}
+                           delta_y_pl: padding_y,
+                           pca_mean_features_pl: pca_means,
+                           pca_components_pl: pca_pcs,
+                           pca_variance_pl: pca_vars,
+                           z_kde_pl: z_values,
+                           kde_latents_sd_pl: sd_kde_latents_this_step,
+                           lambda_pca_pl: args.PCA_LAMBDA}
 
             elif args.PDF_TYPE == 'GAUSSIAN':
 
@@ -732,19 +867,28 @@ with tf.Graph().as_default():
                                                                              delta_x_pl: padding_x,
                                                                              delta_y_pl: padding_y})
 
+                        kdes_latents_this_batch = sess.run(kde_latents_td, feed_dict={images_pl: batch_tmp,
+                                                                                      z_kde_pl: z_values,
+                                                                                      pca_mean_features_pl: pca_means,
+                                                                                      pca_components_pl: pca_pcs,
+                                                                                      pca_variance_pl: pca_vars})
+
                         if b_i == 0:
                             kdes_td_g1_this_step = kdes_g1_this_batch
                             kdes_td_g2_this_step = kdes_g2_this_batch
                             kdes_td_g3_this_step = kdes_g3_this_batch
+                            kdes_td_pca_this_step = kdes_latents_this_batch
                         else:
                             kdes_td_g1_this_step = kdes_td_g1_this_step + kdes_g1_this_batch
                             kdes_td_g2_this_step = kdes_td_g2_this_step + kdes_g2_this_batch
                             kdes_td_g3_this_step = kdes_td_g3_this_step + kdes_g3_this_batch
+                            kdes_td_pca_this_step = kdes_td_pca_this_step + kdes_latents_this_batch
                         num_batches = num_batches + 1
 
                 kdes_td_g1_this_step = kdes_td_g1_this_step / num_batches
                 kdes_td_g2_this_step = kdes_td_g2_this_step / num_batches
                 kdes_td_g3_this_step = kdes_td_g3_this_step / num_batches
+                kdes_td_pca_this_step = kdes_td_pca_this_step / num_batches
 
                 utils_vis.write_pdfs(step,
                                      summary_writer,
@@ -754,6 +898,7 @@ with tf.Graph().as_default():
                                      np.mean(kdes_sd_g1, axis = 0), np.std(kdes_sd_g1, axis = 0), kdes_td_g1_this_step, x_values_g1,
                                      np.mean(kdes_sd_g2, axis = 0), np.std(kdes_sd_g2, axis = 0), kdes_td_g2_this_step, x_values_g2,
                                      np.mean(kdes_sd_g3, axis = 0), np.std(kdes_sd_g3, axis = 0), kdes_td_g3_this_step, x_values_g3,
+                                     np.mean(pca_latent_sd_kdes, axis = 0), np.std(pca_latent_sd_kdes, axis = 0), kdes_td_pca_this_step, z_values,
                                      log_dir_tta)
 
         step = step + 1

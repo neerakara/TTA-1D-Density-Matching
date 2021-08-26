@@ -427,14 +427,14 @@ def write_pdfs(step,
                pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-               # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+               pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                savedir):
 
     # stitch images
     stitched_image = stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                                  pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                                  pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-                                 # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+                                 pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                                  savedir)
     
     # make shape and type like tensorboard wants
@@ -449,7 +449,7 @@ def write_pdfs(step,
 def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                 pdfs_SD_g2_mu, pdfs_SD_g2_std, pdfs_TD_g2, x_g2,
                 pdfs_SD_g3_mu, pdfs_SD_g3_std, pdfs_TD_g3, x_g3,
-                # pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
+                pdfs_SD_pca_mu, pdfs_SD_pca_std, pdfs_TD_pca, z,
                 savedir):
         
     nx = 150
@@ -496,16 +496,16 @@ def stitch_pdfs(pdfs_SD_g1_mu, pdfs_SD_g1_std, pdfs_TD_g1, x_g1,
                                                                                      savedir)
     sy = sy+1
 
-    # # visualize pca 1st latent component of first 5 channels of 7_2
-    # for c in range(num_channels_per_layer):
-    #     sx = c
-    #     stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_pca_mu,
-    #                                                                              pdfs_SD_pca_std,
-    #                                                                              pdfs_TD_pca,
-    #                                                                              z,
-    #                                                                              10*c,
-    #                                                                              savedir) # num_pca_latents = 10
-    # sy = sy+1
+    # visualize pca 1st latent component of first 5 channels of 7_2
+    for c in range(num_channels_per_layer):
+        sx = c
+        stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = save_tmp_pdf_and_load(pdfs_SD_pca_mu,
+                                                                                 pdfs_SD_pca_std,
+                                                                                 pdfs_TD_pca,
+                                                                                 z,
+                                                                                 10*c,
+                                                                                 savedir) # num_pca_latents = 10
+    sy = sy+1
 
     return stitched_image
 
