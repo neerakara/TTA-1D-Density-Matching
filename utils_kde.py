@@ -673,28 +673,38 @@ def compute_latent_kdes_subjectwise(images,
     kdes_allsubs = []
 
     for sub_num in range(image_depths.shape[0]):
-        # logging.info("Subject " + str(sub_num+1))
+        
+        logging.info("Subject " + str(sub_num+1))
+        
         # extract one subject
         image = images[np.sum(image_depths[:sub_num]) : np.sum(image_depths[:sub_num+1]),:,:]
         feed_dict={image_placeholder: np.expand_dims(image, axis=-1),
                    channel_placeholder: channel_num}
+        
         # extract features from layer 7_2 for this subject
         features_this_sub = sess.run(features, feed_dict = feed_dict)
         feats_allsubs[sub_num, :, :] = features_this_sub[features_this_sub.shape[0]//2, :, :, channel_num]
+        
         # extract patches from layer 7_2 channel 'channel' for this subject
         patches_this_sub = sess.run(patches, feed_dict = feed_dict)
+        
         # extract predicted fg probs for this subject
         fg_probs_this_sub = sess.run(fg_probs, feed_dict=feed_dict)
+        
         # keep only 'active' patches
         active_patches_this_sub = patches_this_sub[np.where(fg_probs_this_sub[:, (psize * (psize + 1))//2] > threshold)[0], :]
         actpats_allsubs = np.concatenate((actpats_allsubs, active_patches_this_sub), axis=0)
+        
         # transform active patches to their latent representation
         active_patches_this_sub_latent = learned_pca.transform(active_patches_this_sub)
+        
         # logging.info("Min latent value: " + str(np.round(np.min(active_patches_this_sub_latent), 2)))
         # logging.info("Max latent value: " + str(np.round(np.max(active_patches_this_sub_latent), 2)))
+        
         # compute KDEs for each latent dimension for this subject
         kdes_this_sub, z_vals = compute_pca_latent_kdes(active_patches_this_sub_latent, alpha_kde)
         kdes_allsubs.append(kdes_this_sub)
+    
     # save the KDEs of all SD training subjects for all latent dimensions, for feature channel 'channel'.
     kdes_allsubs = np.array(kdes_allsubs)
     
