@@ -197,7 +197,8 @@ def make_pca_dir_name(args):
     dirname = 'pca_p' + str(args.PCA_PSIZE) 
     dirname = dirname + 's' + str(args.PCA_STRIDE)
     dirname = dirname + '_dim' + str(args.PCA_LATENT_DIM)
-    dirname = dirname + '_' + args.PCA_LAYER + '_act_th' + str(args.PCA_THRESHOLD) + '/'
+    dirname = dirname + '_' + args.PCA_LAYER + '_act_th' + str(args.PCA_THRESHOLD)
+    dirname = dirname + '_kde_alpha' + str(args.PCA_KDE_ALPHA) + '/'
 
     return dirname
 

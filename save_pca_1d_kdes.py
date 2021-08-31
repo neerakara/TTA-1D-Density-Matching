@@ -38,7 +38,7 @@ parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
-parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 
 # parse arguments
@@ -341,7 +341,7 @@ def main():
                                                                                                            learned_pca = pca,
                                                                                                            alpha_kde = args.PCA_KDE_ALPHA,
                                                                                                            sess = sess,
-                                                                                                           savepath = pca_dir + 'c' + str(channel) + '_kde_alpha' + str(args.PCA_KDE_ALPHA) + '.npy')
+                                                                                                           savepath = pca_dir + 'c' + str(channel) + '.npy')
 
         # ================================================================
         # Close the session

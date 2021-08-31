@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "RUNMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "UCL") # BMC / RUNMC / UCL / HK / BIDMC / USZ
+parser.add_argument('--test_dataset', default = "USZ") # BMC / RUNMC / UCL / HK / BIDMC / USZ
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 
@@ -35,6 +35,15 @@ parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
+
+# PCA settings
+parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
+parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
+parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
+parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 100.0) # 0.1 / 1.0 / 10.0
+parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
