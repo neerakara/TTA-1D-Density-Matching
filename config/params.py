@@ -163,10 +163,11 @@ def make_tta_exp_name(args):
     
     exp_str = exp_str + '/' + args.LOSS_TYPE # KL / 
 
-    if args.KL_ORDER == 'TD_vs_SD':
-        exp_str = exp_str + '_' + args.KL_ORDER
-    elif args.KL_ORDER == 'SD_vs_TD': # default
-        exp_str = exp_str
+    if args.LOSS_TYPE == 'KL':
+        if args.KL_ORDER == 'TD_vs_SD':
+            exp_str = exp_str + '_' + args.KL_ORDER
+        elif args.KL_ORDER == 'SD_vs_TD': # default
+            exp_str = exp_str
 
     if args.PCA_LAMBDA > 0.0:
         exp_str = exp_str + '/' + make_pca_dir_name(args)[:-1] + '_lambda' + str(args.PCA_LAMBDA)

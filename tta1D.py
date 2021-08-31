@@ -69,7 +69,7 @@ parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # How many moments to match and how?
-parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
+parser.add_argument('--LOSS_TYPE', default = "EM") # KL / 
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
@@ -91,7 +91,7 @@ parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
-parser.add_argument('--tta_runnum', type = int, default = 2) # 1 / 2 / 3
+parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
 # parse arguments
 args = parser.parse_args()
@@ -327,9 +327,14 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # ==============
             # compute the TTA loss - add ops for all losses and select based on the argument
             # ==============
-            loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_kdes_g1_pl, td_kdes_g1, order = args.KL_ORDER)
-            loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = args.KL_ORDER)
-            loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = args.KL_ORDER)
+            if args.LOSS_TYPE == 'KL':
+                loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_kdes_g1_pl, td_kdes_g1, order = args.KL_ORDER)
+                loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = args.KL_ORDER)
+                loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = args.KL_ORDER)
+            elif args.LOSS_TYPE =='EM':
+                loss_all_kl_g1_op = utils_kde.compute_em_between_kdes(sd_kdes_g1_pl, td_kdes_g1)
+                loss_all_kl_g2_op = utils_kde.compute_em_between_kdes(sd_kdes_g2_pl, td_kdes_g2)
+                loss_all_kl_g3_op = utils_kde.compute_em_between_kdes(sd_kdes_g3_pl, td_kdes_g3)
 
             # ================================================================
             # PCA
@@ -413,9 +418,10 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # =============
             # KL loss between SD and TD KDEs
             # =============
-            loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl,
-                                                            kde_latents_td,
-                                                            order = args.KL_ORDER)
+            if args.LOSS_TYPE == 'KL':
+                loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl, kde_latents_td, order = args.KL_ORDER)
+            elif args.LOSS_TYPE == 'EM':
+                loss_pca_kl_op = utils_kde.compute_em_between_kdes(kde_latents_sd_pl, kde_latents_td)
             
             # =================================
             # Total loss

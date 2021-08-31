@@ -341,6 +341,21 @@ def compute_kl_between_kdes(sd_pdfs,
     return loss_kl_op
 
 # ==============================================
+# https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wasserstein_distance.html#rbc4e517f9be6-2
+# ==============================================
+def compute_em_between_kdes(sd_pdfs,
+                            td_pdfs):
+    
+    # compute cdfs
+    sd_cdfs = tf.math.cumsum(sd_pdfs, axis=1)
+    td_cdfs = tf.math.cumsum(td_pdfs, axis=1)
+
+    # compute Earthmover loss
+    loss_em_op = tf.reduce_mean(tf.reduce_sum(tf.math.abs(sd_cdfs - td_cdfs), axis=1))
+
+    return loss_em_op
+
+# ==============================================
 # D_KL (p_s, p_t) = \sum_{x} p_s(x) log( p_s(x) / p_t(x) )
 # ==============================================
 def compute_kl_between_gaussian(mu_sd,
