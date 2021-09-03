@@ -22,6 +22,7 @@ preproc_folder_nci = os.path.join(data_root,'NCI/')
 preproc_folder_pirad_erc = os.path.join(data_root,'USZ/')
 preproc_folder_promise = os.path.join(data_root,'PROMISE/')
 preproc_folder_acdc = os.path.join(data_root,'ACDC/')
+preproc_folder_mnms = os.path.join(data_root,'MnMs/')
 
 # ==================================================================
 # define dummy paths for the original data storage. directly using pre-processed data for now
@@ -32,3 +33,4 @@ orig_data_root_promise = '/cluster/work/cvl/shared/bmicdatasets/original/Challen
 orig_data_root_pirad_erc = '/cluster/work/cvl/shared/bmicdatasets/original/USZ/Prostate/'
 orig_data_root_abide = '/cluster/work/cvl/shared/bmicdatasets/original/ABIDE/'
 orig_data_root_hcp = '/cluster/work/cvl/nkarani/data/preprocessed/segmentation/HCP/'
+orig_data_root_mnms = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/MnMs/Labeled/'
