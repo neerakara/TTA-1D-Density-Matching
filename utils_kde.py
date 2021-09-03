@@ -341,17 +341,22 @@ def compute_kl_between_kdes(sd_pdfs,
     return loss_kl_op
 
 # ==============================================
-# https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wasserstein_distance.html#rbc4e517f9be6-2
+# https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wasserstein_distance.html#scipy.stats.wasserstein_distance
+# https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.energy_distance.html#scipy.stats.energy_distance
 # ==============================================
 def compute_em_between_kdes(sd_pdfs,
-                            td_pdfs):
+                            td_pdfs,
+                            order = 1):
     
     # compute cdfs
     sd_cdfs = tf.math.cumsum(sd_pdfs, axis=1)
     td_cdfs = tf.math.cumsum(td_pdfs, axis=1)
 
     # compute Earthmover loss
-    loss_em_op = tf.reduce_mean(tf.reduce_sum(tf.math.abs(sd_cdfs - td_cdfs), axis=1))
+    if order == 1:
+        loss_em_op = tf.reduce_mean(tf.reduce_sum(tf.math.abs(sd_cdfs - td_cdfs), axis=1))
+    elif order == 2:
+        loss_em_op = tf.reduce_mean(tf.math.sqrt(2*tf.reduce_sum(tf.math.square(sd_cdfs - td_cdfs), axis=1)))
 
     return loss_em_op
 

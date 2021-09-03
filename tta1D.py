@@ -69,7 +69,7 @@ parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # How many moments to match and how?
-parser.add_argument('--LOSS_TYPE', default = "EM") # KL / 
+parser.add_argument('--LOSS_TYPE', default = "EM2") # KL / EM1 / EM2
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
@@ -331,10 +331,14 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 loss_all_kl_g1_op = utils_kde.compute_kl_between_kdes(sd_kdes_g1_pl, td_kdes_g1, order = args.KL_ORDER)
                 loss_all_kl_g2_op = utils_kde.compute_kl_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = args.KL_ORDER)
                 loss_all_kl_g3_op = utils_kde.compute_kl_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = args.KL_ORDER)
-            elif args.LOSS_TYPE =='EM':
+            elif args.LOSS_TYPE =='EM1':
                 loss_all_kl_g1_op = utils_kde.compute_em_between_kdes(sd_kdes_g1_pl, td_kdes_g1)
                 loss_all_kl_g2_op = utils_kde.compute_em_between_kdes(sd_kdes_g2_pl, td_kdes_g2)
                 loss_all_kl_g3_op = utils_kde.compute_em_between_kdes(sd_kdes_g3_pl, td_kdes_g3)
+            elif args.LOSS_TYPE =='EM2':
+                loss_all_kl_g1_op = utils_kde.compute_em_between_kdes(sd_kdes_g1_pl, td_kdes_g1, order = 2)
+                loss_all_kl_g2_op = utils_kde.compute_em_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = 2)
+                loss_all_kl_g3_op = utils_kde.compute_em_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = 2)
 
             # ================================================================
             # PCA
@@ -420,8 +424,10 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # =============
             if args.LOSS_TYPE == 'KL':
                 loss_pca_kl_op = utils_kde.compute_kl_between_kdes(kde_latents_sd_pl, kde_latents_td, order = args.KL_ORDER)
-            elif args.LOSS_TYPE == 'EM':
+            elif args.LOSS_TYPE == 'EM1':
                 loss_pca_kl_op = utils_kde.compute_em_between_kdes(kde_latents_sd_pl, kde_latents_td)
+            elif args.LOSS_TYPE == 'EM2':
+                loss_pca_kl_op = utils_kde.compute_em_between_kdes(kde_latents_sd_pl, kde_latents_td, order = 2)
             
             # =================================
             # Total loss
