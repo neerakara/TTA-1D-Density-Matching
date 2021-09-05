@@ -395,7 +395,8 @@ def do_data_augmentation(images,
                          brightness_min,
                          brightness_max,
                          noise_min,
-                         noise_max):
+                         noise_max,
+                         rot90 = False):
         
     images_ = np.copy(images)
     labels_ = np.copy(labels)
@@ -476,6 +477,16 @@ def do_data_augmentation(images,
             
             images_[i,:,:] = crop_or_pad_slice_to_size(images_i_tmp, n_x, n_y)
             labels_[i,:,:] = crop_or_pad_slice_to_size(labels_i_tmp, n_x, n_y)
+
+        # ========
+        # rotate 90 / 180 / 270
+        # Doing this for cardiac images (the data has this type of variability)
+        # ========
+        if rot90 == True:
+            if np.random.rand() < data_aug_ratio:
+                num_rotations = np.random.randint(1,4) # 1/2/3
+                images_[i,:,:] = np.rot90(images_[i,:,:], k=num_rotations)
+                labels_[i,:,:] = np.rot90(labels_[i,:,:], k=num_rotations)
             
         # ========
         # contrast

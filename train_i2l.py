@@ -8,6 +8,7 @@ import shutil
 import tensorflow as tf
 import numpy as np
 import utils
+import utils_data
 import model as model
 import config.system_paths as sys_config
 
@@ -16,6 +17,7 @@ import data.data_abide as data_abide
 import data.data_nci as data_nci
 import data.data_promise as data_promise
 import data.data_pirad_erc as data_pirad_erc
+import data.data_mnms as data_mnms
 
 # ==================================================================
 # Set the config file of the experiment you want to run here:
@@ -74,143 +76,13 @@ def run_training(continue_run):
     # ============================   
     logging.info('============================================================')
     logging.info('Loading data...')
-    if exp_config.train_dataset is 'HCPT1':
-        logging.info('Reading HCPT1 images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
-        data_brain_train = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                                preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                                idx_start = 0,
-                                                                idx_end = 20,             
-                                                                protocol = 'T1',
-                                                                size = image_size,
-                                                                depth = 256,
-                                                                target_resolution = target_resolution)
-        imtr, gttr = [ data_brain_train['images'], data_brain_train['labels'] ]
-        
-        data_brain_val = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                              preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                              idx_start = 20,
-                                                              idx_end = 25,             
-                                                              protocol = 'T1',
-                                                              size = image_size,
-                                                              depth = 256,
-                                                              target_resolution = target_resolution)
-        imvl, gtvl = [ data_brain_val['images'], data_brain_val['labels'] ]
-        
-    elif exp_config.train_dataset is 'HCPT2':
-        logging.info('Reading HCPT2 images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
-        data_brain_train = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                                preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                                idx_start = 0,
-                                                                idx_end = 20,             
-                                                                protocol = 'T2',
-                                                                size = image_size,
-                                                                depth = 256,
-                                                                target_resolution = target_resolution)
-        imtr, gttr = [ data_brain_train['images'], data_brain_train['labels'] ]
-        
-        data_brain_val = data_hcp.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
-                                                              preprocessing_folder = sys_config.preproc_folder_hcp,
-                                                              idx_start = 20,
-                                                              idx_end = 25,             
-                                                              protocol = 'T2',
-                                                              size = image_size,
-                                                              depth = 256,
-                                                              target_resolution = target_resolution)
-        imvl, gtvl = [ data_brain_val['images'], data_brain_val['labels'] ]
-        
-    elif exp_config.train_dataset is 'CALTECH':
-        logging.info('Reading CALTECH images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')      
-        data_brain_train = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
-                                                                  preprocessing_folder = sys_config.preproc_folder_abide,
-                                                                  site_name = 'CALTECH',
-                                                                  idx_start = 0,
-                                                                  idx_end = 10,             
-                                                                  protocol = 'T1',
-                                                                  size = image_size,
-                                                                  depth = 256,
-                                                                  target_resolution = target_resolution)
-        imtr, gttr = [ data_brain_train['images'], data_brain_train['labels'] ]
-        
-        data_brain_val = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,
-                                                                preprocessing_folder = sys_config.preproc_folder_abide,
-                                                                site_name = 'CALTECH',
-                                                                idx_start = 10,
-                                                                idx_end = 15,             
-                                                                protocol = 'T1',
-                                                                size = image_size,
-                                                                depth = 256,
-                                                                target_resolution = target_resolution)
-        imvl, gtvl = [ data_brain_val['images'], data_brain_val['labels'] ]
-        
-    # PROSTATE
-    elif exp_config.train_dataset is 'RUNMC' or exp_config.train_dataset is 'BMC':
-        logging.info('Reading NCI - ' + exp_config.train_dataset + ' images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
-        data_pros = data_nci.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
-                                                         preprocessing_folder = sys_config.preproc_folder_nci,
-                                                         size = image_size,
-                                                         target_resolution = target_resolution,
-                                                         force_overwrite = False,
-                                                         sub_dataset = exp_config.train_dataset,
-                                                         cv_fold_num = 1)
-        
-        imtr, gttr = [ data_pros['images_train'], data_pros['labels_train'] ]
-        imvl, gtvl = [ data_pros['images_validation'], data_pros['labels_validation'] ]
-        
-    elif exp_config.train_dataset is 'PROMISE':
-        logging.info('Reading PROMISE images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_promise)
-        data_pros = data_promise.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_promise,
-                                                             preprocessing_folder = sys_config.preproc_folder_promise,
-                                                             size = image_size,
-                                                             target_resolution = target_resolution,
-                                                             force_overwrite = False,
-                                                             cv_fold_num = 2)
-        imtr, gttr = [ data_pros['images_train'], data_pros['masks_train'] ]
-        imvl, gtvl = [ data_pros['images_validation'], data_pros['masks_validation'] ]
-        
-    elif exp_config.train_dataset is 'PIRAD_ERC':
-        
-        logging.info('Reading PIRAD_ERC images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_pirad_erc)
-        
-        data_pros_train = data_pirad_erc.load_data(input_folder = sys_config.orig_data_root_pirad_erc,
-                                                   preproc_folder = sys_config.preproc_folder_pirad_erc,
-                                                   idx_start = 40,
-                                                   idx_end = 68,
-                                                   size = image_size,
-                                                   target_resolution = target_resolution,
-                                                   labeller = 'ek',
-                                                   force_overwrite = False) 
-        
-        data_pros_val = data_pirad_erc.load_data(input_folder = sys_config.orig_data_root_pirad_erc,
-                                                 preproc_folder = sys_config.preproc_folder_pirad_erc,
-                                                 idx_start = 20,
-                                                 idx_end = 40,
-                                                 size = image_size,
-                                                 target_resolution = target_resolution,
-                                                 labeller = 'ek',
-                                                 force_overwrite = False)
-
-        imtr, gttr = [ data_pros_train['images'], data_pros_train['labels'] ]
-        imvl, gtvl = [ data_pros_val['images'], data_pros_val['labels'] ]
-
-    # CARDIAC
-    elif exp_config.train_dataset is 'ACDC':
-        logging.info('Reading ACDC images...')    
-        logging.info('Data root directory: ' + sys_config.orig_data_root_acdc)
-        data_cardiac = data_acdc.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_acdc,
-                                                             preprocessing_folder = sys_config.preproc_folder_acdc,
-                                                             mode = '2D',
-                                                             size = image_size,
-                                                             target_resolution = target_resolution,
-                                                             force_overwrite = False,
-                                                             cv_fold_num = 1)
-        imtr, gttr = [ data_cardiac['images_train'], data_cardiac['labels_train'] ]
-        imvl, gtvl = [ data_cardiac['images_validation'], data_cardiac['labels_validation'] ]
+    loaded_tr_data = utils_data.load_training_data(exp_config.train_dataset,
+                                                   image_size,
+                                                   target_resolution)
+    imtr = loaded_tr_data[0]
+    gttr = loaded_tr_data[1]
+    imvl = loaded_tr_data[9]
+    gtvl = loaded_tr_data[10]
               
     logging.info('Training Images: %s' %str(imtr.shape)) # expected: [num_slices, img_size_x, img_size_y]
     logging.info('Training Labels: %s' %str(gttr.shape)) # expected: [num_slices, img_size_x, img_size_y]
@@ -582,26 +454,26 @@ def iterate_minibatches(images,
 
             # ===========================    
             # doing data aug both during training as well as during evaluation on the validation set (used for model selection)
-            # ===========================                  
-            if train_or_eval is 'train' or train_or_eval is 'eval':
-            # if train_or_eval is 'train':
-                x, y = utils.do_data_augmentation(images = x,
-                                                  labels = y,
-                                                  data_aug_ratio = exp_config.da_ratio,
-                                                  sigma = exp_config.sigma,
-                                                  alpha = exp_config.alpha,
-                                                  trans_min = exp_config.trans_min,
-                                                  trans_max = exp_config.trans_max,
-                                                  rot_min = exp_config.rot_min,
-                                                  rot_max = exp_config.rot_max,
-                                                  scale_min = exp_config.scale_min,
-                                                  scale_max = exp_config.scale_max,
-                                                  gamma_min = exp_config.gamma_min,
-                                                  gamma_max = exp_config.gamma_max,
-                                                  brightness_min = exp_config.brightness_min,
-                                                  brightness_max = exp_config.brightness_max,
-                                                  noise_min = exp_config.noise_min,
-                                                  noise_max = exp_config.noise_max)
+            # ===========================             
+            do_rot90 = exp_config.train_dataset == 'HVHD' or exp_config.train_dataset == 'CSF' or exp_config.train_dataset == 'UHE'     
+            x, y = utils.do_data_augmentation(images = x,
+                                                labels = y,
+                                                data_aug_ratio = exp_config.da_ratio,
+                                                sigma = exp_config.sigma,
+                                                alpha = exp_config.alpha,
+                                                trans_min = exp_config.trans_min,
+                                                trans_max = exp_config.trans_max,
+                                                rot_min = exp_config.rot_min,
+                                                rot_max = exp_config.rot_max,
+                                                scale_min = exp_config.scale_min,
+                                                scale_max = exp_config.scale_max,
+                                                gamma_min = exp_config.gamma_min,
+                                                gamma_max = exp_config.gamma_max,
+                                                brightness_min = exp_config.brightness_min,
+                                                brightness_max = exp_config.brightness_max,
+                                                noise_min = exp_config.noise_min,
+                                                noise_max = exp_config.noise_max,
+                                                rot90 = do_rot90)
 
         x = np.expand_dims(x, axis=-1)
         

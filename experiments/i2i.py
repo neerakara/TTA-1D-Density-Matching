@@ -4,7 +4,7 @@ import tensorflow as tf
 # ======================================================================
 # train settings
 # ======================================================================
-train_dataset = 'RUNMC' # CALTECH / HCPT2 / HCPT1 / BMC / RUNMC
+train_dataset = 'CSF' # CALTECH / HCPT2 / HCPT1 / BMC / RUNMC / CSF
 run_number = 1
 tr_str = 'tr' + train_dataset
 run_str = '_r' + str(run_number) + '/'
@@ -36,6 +36,7 @@ image_depth_ixi = 256
 image_depth_stanford = 132
 nlabels_brain = 15
 nlabels_prostate = 3
+nlabels_cardiac = 4
 loss_type = 'dice'
 
 # ======================================================================
@@ -62,6 +63,14 @@ elif train_dataset in ['BMC', 'RUNMC', 'PIRAD_ERC', 'PROMISE']:
     nlabels = nlabels_prostate
     target_resolution = (0.625, 0.625)
     image_depth = 32
+    downsampling_factor_x = 1
+    downsampling_factor_y = 1
+    downsampling_factor_z = 1
+
+elif train_dataset in ['UHE', 'CSF', 'HVHD']:
+    nlabels = nlabels_cardiac
+    target_resolution = (1.33, 1.33)
+    image_depth = 16
     downsampling_factor_x = 1
     downsampling_factor_y = 1
     downsampling_factor_z = 1
