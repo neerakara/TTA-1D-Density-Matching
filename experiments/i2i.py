@@ -4,10 +4,14 @@ import tensorflow as tf
 # ======================================================================
 # train settings
 # ======================================================================
-train_dataset = 'CSF' # CALTECH / HCPT2 / HCPT1 / BMC / RUNMC / CSF
+train_dataset = 'UMC' # CALTECH / HCPT2 / HCPT1 | BMC / RUNMC / UCL / HK / BIDMC / USZ | CSF / UHE / HVHD | UMC / NUHS
 run_number = 1
+cv_num = 1
 tr_str = 'tr' + train_dataset
-run_str = '_r' + str(run_number) + '/'
+if train_dataset == 'UMC':
+    run_str = '_cv' + str(cv_num) + '_r' + str(run_number) + '/'
+else:
+    run_str = '_r' + str(run_number) + '/'
 expname_i2l = tr_str + run_str + 'i2i2l/'
 
 # ====================================================
@@ -37,6 +41,7 @@ image_depth_stanford = 132
 nlabels_brain = 15
 nlabels_prostate = 3
 nlabels_cardiac = 4
+nlabels_wmh = 2
 loss_type = 'dice'
 
 # ======================================================================
@@ -71,6 +76,14 @@ elif train_dataset in ['UHE', 'CSF', 'HVHD']:
     nlabels = nlabels_cardiac
     target_resolution = (1.33, 1.33)
     image_depth = 16
+    downsampling_factor_x = 1
+    downsampling_factor_y = 1
+    downsampling_factor_z = 1
+
+elif train_dataset in ['UMC', 'NUHS']:
+    nlabels = nlabels_wmh
+    target_resolution = (1.0, 1.0)
+    image_depth = 48
     downsampling_factor_x = 1
     downsampling_factor_y = 1
     downsampling_factor_z = 1

@@ -78,7 +78,8 @@ def run_training(continue_run):
     logging.info('Loading data...')
     loaded_tr_data = utils_data.load_training_data(exp_config.train_dataset,
                                                    image_size,
-                                                   target_resolution)
+                                                   target_resolution,
+                                                   exp_config.cv_num)
     imtr = loaded_tr_data[0]
     gttr = loaded_tr_data[1]
     imvl = loaded_tr_data[9]
@@ -457,23 +458,23 @@ def iterate_minibatches(images,
             # ===========================             
             do_rot90 = exp_config.train_dataset == 'HVHD' or exp_config.train_dataset == 'CSF' or exp_config.train_dataset == 'UHE'     
             x, y = utils.do_data_augmentation(images = x,
-                                                labels = y,
-                                                data_aug_ratio = exp_config.da_ratio,
-                                                sigma = exp_config.sigma,
-                                                alpha = exp_config.alpha,
-                                                trans_min = exp_config.trans_min,
-                                                trans_max = exp_config.trans_max,
-                                                rot_min = exp_config.rot_min,
-                                                rot_max = exp_config.rot_max,
-                                                scale_min = exp_config.scale_min,
-                                                scale_max = exp_config.scale_max,
-                                                gamma_min = exp_config.gamma_min,
-                                                gamma_max = exp_config.gamma_max,
-                                                brightness_min = exp_config.brightness_min,
-                                                brightness_max = exp_config.brightness_max,
-                                                noise_min = exp_config.noise_min,
-                                                noise_max = exp_config.noise_max,
-                                                rot90 = do_rot90)
+                                              labels = y,
+                                              data_aug_ratio = exp_config.da_ratio,
+                                              sigma = exp_config.sigma,
+                                              alpha = exp_config.alpha,
+                                              trans_min = exp_config.trans_min,
+                                              trans_max = exp_config.trans_max,
+                                              rot_min = exp_config.rot_min,
+                                              rot_max = exp_config.rot_max,
+                                              scale_min = exp_config.scale_min,
+                                              scale_max = exp_config.scale_max,
+                                              gamma_min = exp_config.gamma_min,
+                                              gamma_max = exp_config.gamma_max,
+                                              brightness_min = exp_config.brightness_min,
+                                              brightness_max = exp_config.brightness_max,
+                                              noise_min = exp_config.noise_min,
+                                              noise_max = exp_config.noise_max,
+                                              rot90 = do_rot90)
 
         x = np.expand_dims(x, axis=-1)
         

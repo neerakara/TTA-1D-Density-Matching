@@ -4,6 +4,7 @@ import data.data_nci as data_nci
 import data.data_promise as data_promise
 import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
+import data.data_wmh as data_wmh
 import logging
 import config.system_paths as sys_config
 import numpy as np
@@ -146,6 +147,36 @@ def load_training_data(train_dataset,
         imvl = data_cardiac['images_validation']
         gtvl = data_cardiac['labels_validation']
         orig_data_siz_z_val = data_cardiac['nz_validation'][:]
+        num_val_subjects = orig_data_siz_z_val.shape[0] 
+
+    # ================================================================
+    # Brain lesions (WMH)
+    # ================================================================
+    elif train_dataset == 'UMC' or train_dataset == 'NUHS':
+        data_brain_lesions = data_wmh.load_and_maybe_process_data(sys_config.orig_data_root_wmh,
+                                                                  sys_config.preproc_folder_wmh,
+                                                                  image_size,
+                                                                  target_resolution,
+                                                                  force_overwrite=False,
+                                                                  sub_dataset = train_dataset,
+                                                                  cv_fold_number = cv_fold_num,
+                                                                  protocol = 'FLAIR')
+
+        imtr = data_brain_lesions['images_train']
+        gttr = data_brain_lesions['labels_train']
+        
+        orig_data_res_x = data_brain_lesions['px_train'][:]
+        orig_data_res_y = data_brain_lesions['py_train'][:]
+        orig_data_res_z = data_brain_lesions['pz_train'][:]
+        orig_data_siz_x = data_brain_lesions['nx_train'][:]
+        orig_data_siz_y = data_brain_lesions['ny_train'][:]
+        orig_data_siz_z = data_brain_lesions['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+        imvl = data_brain_lesions['images_validation']
+        gtvl = data_brain_lesions['labels_validation']
+        orig_data_siz_z_val = data_brain_lesions['nz_validation'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0] 
 
     # ================================================================

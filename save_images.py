@@ -3,19 +3,22 @@ import data.data_nci as data_nci
 import data.data_promise as data_promise
 import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
+import data.data_wmh as data_wmh
 import numpy as np
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt 
 # import utils_vis
 
-anatomy = 'cardiac'
-dataset_name = 'HVHD' # BMC, RUNMC (NCI), UCL, HK, BIDMC, USZ | UHE, CSF, HVHD
+anatomy = 'wmh' # prostate / cardiac / wmh
+dataset_name = 'UMC' # BMC, RUNMC (NCI), UCL, HK, BIDMC, USZ | UHE, CSF, HVHD | UMC, NUHS
 image_size = (256, 256)
 if anatomy == 'prostate':
     target_resolution = (0.625, 0.625)
 elif anatomy == 'cardiac':
     target_resolution = (1.33, 1.33)
+elif anatomy == 'wmh':
+    target_resolution = (1.0, 1.0)
 
 if dataset_name in ['BMC', 'RUNMC']:
     data = data_nci.load_and_maybe_process_data(sys_config.orig_data_root_nci,
@@ -25,10 +28,6 @@ if dataset_name in ['BMC', 'RUNMC']:
                                                 force_overwrite=False,
                                                 sub_dataset = dataset_name,
                                                 cv_fold_num = 1)
-    images = data['images_test']
-    labels = data['labels_test']
-    patnames = data['patnames_test']
-    orig_data_siz_z = data['nz_test'][:]
 
 elif dataset_name in ['UCL', 'BIDMC', 'HK']:
     data = data_promise.load_and_maybe_process_data(sys_config.orig_data_root_promise,
@@ -38,10 +37,6 @@ elif dataset_name in ['UCL', 'BIDMC', 'HK']:
                                                     force_overwrite=False,
                                                     sub_dataset = dataset_name,
                                                     cv_fold_num = 1)
-    images = data['images_test']
-    labels = data['labels_test']
-    patnames = data['patnames_test']
-    orig_data_siz_z = data['nz_test'][:]
 
 elif dataset_name in ['USZ']:
     idx_start = 0 # test images
@@ -53,10 +48,6 @@ elif dataset_name in ['USZ']:
                                     size = image_size,
                                     target_resolution = target_resolution,
                                     labeller = 'ek')
-    images = data['images']
-    labels = data['labels']
-    patnames = data['patnames']
-    orig_data_siz_z = data['nz'][:]
 
 elif dataset_name in ['UHE', 'CSF', 'HVHD']:
     data = data_mnms.load_and_maybe_process_data(sys_config.orig_data_root_mnms,
@@ -65,10 +56,20 @@ elif dataset_name in ['UHE', 'CSF', 'HVHD']:
                                                 target_resolution,
                                                 force_overwrite=False,
                                                 sub_dataset = dataset_name)
-    images = data['images_test']
-    labels = data['labels_test']
-    patnames = data['patnames_test']
-    orig_data_siz_z = data['nz_test'][:]
+
+elif dataset_name in ['UMC', 'NUHS']:
+    data = data_wmh.load_and_maybe_process_data(sys_config.orig_data_root_wmh,
+                                                sys_config.preproc_folder_wmh,
+                                                image_size,
+                                                target_resolution,
+                                                force_overwrite=False,
+                                                sub_dataset = dataset_name,
+                                                cv_fold_number = 1,
+                                                protocol = 'FLAIR')
+images = data['images_test']
+labels = data['labels_test']
+patnames = data['patnames_test']
+orig_data_siz_z = data['nz_test'][:]
 
 # extract one test image volume
 for sub_num in range(orig_data_siz_z.shape[0]):
@@ -82,19 +83,26 @@ for sub_num in range(orig_data_siz_z.shape[0]):
     print(image.shape)
     print(label.shape)
 
-    savepath_base = '/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/figures/data_vis/' + anatomy + '/'
-    
-    plt.figure(figsize=[20,20])                        
-    plt.imshow(image[image.shape[0]//2, :, :], cmap='gray')
-    plt.axis('off')
-    plt.savefig(savepath_base + dataset_name + '_' + patname + '_image.png', bbox_inches='tight', pad_inches = 0, dpi=100)
-    plt.close()
+    image2d = image[image.shape[0]//2, :, :]
+    label2d = label[image.shape[0]//2, :, :]
 
     # make all FG labels the same
     if anatomy == 'prostate':
         label[label!=0] = 1
+    if anatomy == 'wmh':
+        image2d = np.rot90(image2d, k=-1)
+        label2d = np.rot90(label2d, k=-1)
+
+    savepath_base = '/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/figures/data_vis/' + anatomy + '/'
+    
     plt.figure(figsize=[20,20])                        
-    plt.imshow(label[image.shape[0]//2, :, :], cmap='gray')
+    plt.imshow(image2d, cmap='gray')
+    plt.axis('off')
+    plt.savefig(savepath_base + dataset_name + '_' + patname + '_image.png', bbox_inches='tight', pad_inches = 0, dpi=100)
+    plt.close()
+
+    plt.figure(figsize=[20,20])                        
+    plt.imshow(label2d, cmap='gray')
     plt.axis('off')
     plt.savefig(savepath_base + dataset_name + '_' + patname + '_label.png', bbox_inches='tight', pad_inches = 0, dpi=100)
     plt.close()
