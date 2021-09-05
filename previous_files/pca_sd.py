@@ -26,12 +26,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # parse arguments
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
+
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "NCI") # NCI / HCPT1
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC / BMC / 
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+
 # Test dataset 
 parser.add_argument('--test_dataset', default = "USZ") # PROMISE / USZ / CALTECH / STANFORD / HCPT2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+
 # TTA options
 parser.add_argument('--tta_string', default = "TTA/")
 parser.add_argument('--adaBN', type = int, default = 0) # 0 to 1
