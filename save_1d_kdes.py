@@ -23,13 +23,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC
+parser.add_argument('--train_dataset', default = "CSF") # RUNMC / CSF
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Batch settings
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # KDE hyperparameters
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # parse arguments
 args = parser.parse_args()
 

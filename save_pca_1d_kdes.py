@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC / BMC / 
+parser.add_argument('--train_dataset', default = "CSF") # RUNMC / BMC / CSF
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 
 # PCA settings
@@ -38,7 +38,7 @@ parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
-parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0
+parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 
 # parse arguments

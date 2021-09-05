@@ -53,10 +53,10 @@ logging.info("File start running...")
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC
+parser.add_argument('--train_dataset', default = "CSF") # RUNMC / CSF
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK
+parser.add_argument('--test_dataset', default = "HVHD") # BMC / USZ / UCL / BIDMC / HK / UHE / HVHD
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
 
@@ -69,7 +69,7 @@ parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # How many moments to match and how?
-parser.add_argument('--LOSS_TYPE', default = "EM2") # KL / EM1 / EM2
+parser.add_argument('--LOSS_TYPE', default = "KL") # KL / EM1 / EM2
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
@@ -84,7 +84,7 @@ parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16) 
+parser.add_argument('--b_size', type = int, default = 8) # set to 8 for Cardiac as the volumes contain less that 16 slices, set to 16 for other anatomies
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
@@ -733,16 +733,16 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     # pad zeros to have complete batches
                     extra_zeros_needed = b_i + b_size - test_image.shape[0]
                     batch = np.expand_dims(np.concatenate((test_image[b_i:, ...],
-                                        np.zeros((extra_zeros_needed,
-                                                    test_image.shape[1],
-                                                    test_image.shape[2]))), axis=0), axis=-1)
+                                           np.zeros((extra_zeros_needed,
+                                                     test_image.shape[1],
+                                                     test_image.shape[2]))), axis=0), axis=-1)
                 label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
                 image_normalized.append(sess.run(images_normalized, feed_dict={images_pl: batch}))
 
             label_predicted = np.squeeze(np.array(label_predicted)).astype(float)  
             image_normalized = np.squeeze(np.array(image_normalized)).astype(float)  
 
-            if b_size > 1:
+            if b_size > 1 and test_image.shape[0] > b_size:
                 label_predicted = np.reshape(label_predicted,
                                             (label_predicted.shape[0]*label_predicted.shape[1],
                                             label_predicted.shape[2],
@@ -753,8 +753,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                             image_normalized.shape[2],
                                             image_normalized.shape[3]))
                 
-                label_predicted = label_predicted[:test_image.shape[0], ...]
-                image_normalized = image_normalized[:test_image.shape[0], ...]
+            label_predicted = label_predicted[:test_image.shape[0], ...]
+            image_normalized = image_normalized[:test_image.shape[0], ...]
 
             if args.test_dataset in ['UCL', 'HK', 'BIDMC']:
                 label_predicted[label_predicted!=0] = 1
@@ -807,7 +807,6 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                             break
                     
                     # Select a batch from the center of the SD image
-                    logging.info(sd_image.shape)
                     tmp = sd_image.shape[0] // 2 - b_size//2
                     features_for_display_sd = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
                                                     feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
