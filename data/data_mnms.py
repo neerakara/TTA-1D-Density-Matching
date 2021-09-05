@@ -358,36 +358,16 @@ def load_and_maybe_process_data(input_folder,
 def load_without_size_preprocessing(preproc_folder,
                                     patient_id):
                     
-    # ==================
-    # read bias corrected image and ground truth segmentation
-    # ==================
-    filepath_bias_corrected_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_n4.nii.gz'
-    filepath_seg_nii_format = preproc_folder + 'IndividualNIFTI/Case' + patient_id + '_segmentation.nii.gz'
-    
-    # ================================    
-    # read bias corrected image
-    # ================================    
-    image = utils.load_nii(filepath_bias_corrected_nii_format)[0]
+    img_path = preproc_folder + 'IndividualNIFTI/' + patient_id + '.nii.gz'
+    lbl_path = preproc_folder + 'IndividualNIFTI/' + patient_id + '_gt.nii.gz'
 
-    # ================================    
+    img = utils.load_nii(img_path = img_path)[0]
+    lbl = utils.load_nii(img_path = lbl_path)[0]
+    
     # normalize the image
-    # ================================    
-    image = utils.normalise_image(image, norm_type='div_by_max')
-
-    # ================================    
-    # read the labels
-    # ================================    
-    label = utils.load_nii(filepath_seg_nii_format)[0]            
+    img = utils.normalise_image(img, norm_type='div_by_max')
     
-    # ================================    
-    # skimage io with simple ITKplugin was used to read the images in the convert_to_nii_and_correct_bias_field function.
-    # this lead to the arrays being read as z-x-y
-    # move the axes appropriately, so that the resolution read above is correct for the corresponding axes.
-    # ================================    
-    image = np.swapaxes(np.swapaxes(image, 0, 1), 1, 2)
-    label = np.swapaxes(np.swapaxes(label, 0, 1), 1, 2)
-    
-    return image, label
+    return img, lbl
 
 # ===============================================================
 # ===============================================================

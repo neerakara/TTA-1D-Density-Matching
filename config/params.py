@@ -61,7 +61,8 @@ noise_max = 0.1
 
 # ======================================================================
 # ======================================================================
-def get_dataset_dependent_params(train_dataset, test_dataset = ''):
+def get_dataset_dependent_params(train_dataset,
+                                 test_dataset = ''):
     
     if train_dataset in ['CALTECH', 'STANFORD', 'HCPT1', 'HCPT2', 'IXI']:
 
@@ -103,7 +104,7 @@ def get_dataset_dependent_params(train_dataset, test_dataset = ''):
         b_size_compute_sd_pdfs = 16
         b_size_compute_sd_gaussians = 16
 
-    elif train_dataset in ['BMC', 'RUNMC', 'UCL', 'HK', 'BIDMC', 'PIRAD_ERC']:
+    elif train_dataset in ['BMC', 'RUNMC', 'UCL', 'HK', 'BIDMC', 'USZ']:
 
         # =================================
         # size, resolution, etc.
@@ -121,6 +122,41 @@ def get_dataset_dependent_params(train_dataset, test_dataset = ''):
         # Whether to evaluate binary dice or over multiple classes
         # =================================
         whole_gland_results = True
+
+        # =================================
+        # number of TTA iterations
+        # =================================
+        tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_model_saving_freq = 250
+        tta_vis_freq = 10
+
+        # =================================
+        # Batch sizes for SD Gaussian / KDE computation
+        # =================================
+        # b_size_compute_sd_pdfs is set to a low value,
+        # because the last incomplete batch is ignored in the SD KDE computation.
+        # So we would like to cover almost the whole image with 'full' batches.
+        b_size_compute_sd_pdfs = 2 
+        b_size_compute_sd_gaussians = 0 # Use full images
+
+    elif train_dataset in ['CSF', 'UHE', 'HVHD']:
+
+        # =================================
+        # size, resolution, etc.
+        # =================================
+        image_size = (256, 256)
+        nlabels = 4
+        target_resolution = (1.33, 1.33)
+        downsampling_factor_x = 1
+        downsampling_factor_y = 1
+        downsampling_factor_z = 1
+        image_depth_tr = 16
+        image_depth_ts = 16
+
+        # =================================
+        # Whether to evaluate binary dice or over multiple classes
+        # =================================
+        whole_gland_results = False
 
         # =================================
         # number of TTA iterations

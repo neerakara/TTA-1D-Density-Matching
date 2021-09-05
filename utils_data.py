@@ -10,7 +10,6 @@ import numpy as np
 
 # ==================================================================   
 # TRAINING DATA LOADER
-# TODO: Add PROMISE, USZ, ABIDE
 # ==================================================================   
 def load_training_data(train_dataset,
                        image_size,
@@ -337,6 +336,33 @@ def load_testing_data(test_dataset,
         ids = np.arange(num_test_subjects)
 
     # ================================================================
+    # CARDIAC (MNMS)
+    # ================================================================
+    elif test_dataset == 'HVHD' or test_dataset == 'CSF' or test_dataset == 'UHE':
+    
+        logging.info('Reading MNMS - ' + test_dataset + ' images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_mnms)
+
+        data_cardiac = data_mnms.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_mnms,
+                                                             preprocessing_folder = sys_config.preproc_folder_mnms,
+                                                             size = image_size,
+                                                             target_resolution = target_resolution,
+                                                             force_overwrite = False,
+                                                             sub_dataset = test_dataset)
+        
+        imts = data_cardiac['images_test']
+        gtts = data_cardiac['labels_test']
+        orig_data_res_x = data_cardiac['px_test'][:]
+        orig_data_res_y = data_cardiac['py_test'][:]
+        orig_data_res_z = data_cardiac['pz_test'][:]
+        orig_data_siz_x = data_cardiac['nx_test'][:]
+        orig_data_siz_y = data_cardiac['ny_test'][:]
+        orig_data_siz_z = data_cardiac['nz_test'][:]
+        name_test_subjects = data_cardiac['patnames_test']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+        ids = np.arange(num_test_subjects)
+
+    # ================================================================
     # HCP T1
     # ================================================================
     elif test_dataset == 'HCPT1':
@@ -539,6 +565,12 @@ def load_testing_data_wo_preproc(test_dataset_name,
         # image will be normalized to [0,1]
         image_orig, labels_orig = data_promise.load_without_size_preprocessing(sys_config.preproc_folder_promise,
                                                                                subject_name[4:6])
+        num_rotations = 0
+
+    elif test_dataset_name in ['CSF', 'UHE', 'HVHD']:
+        # image will be normalized to [0,1]
+        image_orig, labels_orig = data_mnms.load_without_size_preprocessing(sys_config.preproc_folder_mnms,
+                                                                            subject_name)
         num_rotations = 0
 
     return image_orig, labels_orig, num_rotations

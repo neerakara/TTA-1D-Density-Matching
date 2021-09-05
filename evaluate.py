@@ -20,12 +20,12 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # BMC / RUNMC / UCL / HK / BIDMC / USZ
+parser.add_argument('--train_dataset', default = "CSF") # BMC / RUNMC / UCL / HK / BIDMC / USZ / CSF
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 # Test dataset 
-parser.add_argument('--test_dataset', default = "USZ") # BMC / RUNMC / UCL / HK / BIDMC / USZ
+parser.add_argument('--test_dataset', default = "HVHD") # BMC / RUNMC / UCL / HK / BIDMC / USZ / CSF / UHE / HVHD
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
@@ -312,8 +312,7 @@ def main():
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
         subject_name = str(name_test_subjects[sub_num])[2:-1]
         logging.info('============================================================')
-        logging.info('Subject id: %s' %sub_num)
-        logging.info(subject_name)
+        logging.info('Subject ' + str(sub_num) + ' out of ' + str(num_test_subjects) + ': ' + subject_name)
 
         # If the 'models' directory does not exist for this subject, move onto the next one
         if args.NORMALIZE == 1:
@@ -398,17 +397,17 @@ def main():
         # ================================================================
         save_visual_results = True
         if save_visual_results == True:
-            d_vis = 32 # 256
+            d_vis = image_depth_ts
             # ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
             ids_vis = [d_vis // 2]
             utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                    x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                    y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
-                                                    gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
-                                                    num_rotations = - num_rotations, # rotate for consistent visualization across datasets
-                                                    savepath = savepath + '.png',
-                                                    nlabels = nl,
-                                                    ids=ids_vis)
+                                                     x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
+                                                     y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
+                                                     gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
+                                                     num_rotations = - num_rotations, # rotate for consistent visualization across datasets
+                                                     savepath = savepath + '.png',
+                                                     nlabels = nl,
+                                                     ids=ids_vis)
                                    
         # ================================
         # write the mean fg dice of this subject to the text file
