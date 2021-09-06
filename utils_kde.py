@@ -750,6 +750,67 @@ def compute_latent_kdes_subjectwise(images,
     return kdes_allsubs, z_vals, feats_allsubs, np.array(actpats_allsubs[1:,:])
 
 # ==================================
+# ==================================
+def compute_latent_gaussians_subjectwise(images,
+                                         train_dataset,
+                                         image_size,
+                                         image_depths,
+                                         image_placeholder,
+                                         channel_placeholder,
+                                         channel_num,
+                                         features,
+                                         patches,
+                                         fg_probs,
+                                         psize,
+                                         threshold,
+                                         learned_pca,
+                                         sess,
+                                         savepath = ''):
+
+    gaussians_allsubs = []
+
+    if train_dataset == 'HCPT1':
+        num_subjects = 10 # 10 subjects should likely provide enough variability for brain 
+    else:
+        num_subjects = image_depths.shape[0]
+
+    for sub_num in range(num_subjects):
+        
+        logging.info("Subject " + str(sub_num+1))
+        
+        # extract one subject
+        image = images[np.sum(image_depths[:sub_num]) : np.sum(image_depths[:sub_num+1]),:,:]
+        feed_dict={image_placeholder: np.expand_dims(image, axis=-1),
+                   channel_placeholder: channel_num}
+                
+        # extract patches from layer 7_2 channel 'channel' for this subject
+        patches_this_sub = sess.run(patches, feed_dict = feed_dict)
+        
+        # extract predicted fg probs for this subject
+        fg_probs_this_sub = sess.run(fg_probs, feed_dict=feed_dict)
+        
+        # keep only 'active' patches
+        active_patches_this_sub = patches_this_sub[np.where(fg_probs_this_sub[:, (psize * (psize + 1))//2] > threshold)[0], :]
+        
+        # transform active patches to their latent representation
+        latents_of_active_patches_of_this_sub = learned_pca.transform(active_patches_this_sub) # [num_patches, num_latent_dims]
+       
+        # compute Gaussian parameters for each latent dimension for this subject
+        latent_means_this_sub = np.mean(latents_of_active_patches_of_this_sub, axis=0) # [num_latent_dims]
+        latent_vars_this_sub = np.var(latents_of_active_patches_of_this_sub, axis=0) # [num_latent_dims]
+
+        # append to list
+        gaussians_allsubs.append(np.stack((latent_means_this_sub, latent_vars_this_sub), 1))
+
+    # save
+    gaussians_allsubs = np.array(gaussians_allsubs)
+    logging.info(gaussians_allsubs.shape)
+    if savepath != '':
+        np.save(savepath, gaussians_allsubs)
+    
+    return gaussians_allsubs
+
+# ==================================
 # NUMPY. Riemann integral
 # ==================================
 def compute_kl_between_kdes_numpy(sd_pdfs, # [num_subjects, num_dims, num_evals_of_each_kde]

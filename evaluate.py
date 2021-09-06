@@ -20,20 +20,20 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset 
-parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
+parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 
@@ -48,7 +48,7 @@ parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 parser.add_argument('--PCA_LAMBDA', type = float, default = 0.0) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # How many moments to match and how?
-parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
+parser.add_argument('--LOSS_TYPE', default = "EM2") # KL / 
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4

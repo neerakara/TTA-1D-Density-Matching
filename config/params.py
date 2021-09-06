@@ -264,13 +264,16 @@ def make_tta_exp_name(args):
 # ================================================================
 # Function to make the name for the directory where the PCA KDEs will be stored
 # ================================================================
-def make_pca_dir_name(args):
+def make_pca_dir_name(args, pdftype='KDE'):
     
     dirname = 'pca_p' + str(args.PCA_PSIZE) 
     dirname = dirname + 's' + str(args.PCA_STRIDE)
     dirname = dirname + '_dim' + str(args.PCA_LATENT_DIM)
     dirname = dirname + '_' + args.PCA_LAYER + '_act_th' + str(args.PCA_THRESHOLD)
-    dirname = dirname + '_kde_alpha' + str(args.PCA_KDE_ALPHA) + '/'
+    if pdftype == 'KDE':
+        dirname = dirname + '_kde_alpha' + str(args.PCA_KDE_ALPHA) + '/'
+    else:
+        dirname = dirname + '_gaussians/'
 
     return dirname
 
