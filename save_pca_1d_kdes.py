@@ -30,12 +30,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "CSF") # RUNMC / BMC / CSF
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC / CSF / UMC / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # PCA settings
-parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
-parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
+parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16
+parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 (for all except UMC, where this needs to set to 2 to get enough 'fg' patches for all subjects)
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
@@ -56,7 +57,10 @@ image_depth_tr = dataset_params[3]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+if args.train_dataset == 'UMC':
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # ==================================================================
@@ -205,7 +209,10 @@ def main():
             # ====================
             # init arrays to store features and patches of different subjects
             # ====================
-            num_subjects = orig_data_siz_z_train.shape[0]
+            if args.train_dataset == 'HCPT1':
+                num_subjects = 10 # takes quite long to do this for all 20 subjects. Also 10 subjects should likely provide enough variability.
+            else:
+                num_subjects = orig_data_siz_z_train.shape[0]
             sd_features = np.zeros([num_subjects, image_size[0], image_size[1]]) 
             sd_patches = np.zeros([1, args.PCA_PSIZE*args.PCA_PSIZE])
             sd_patches_active = np.zeros([1, args.PCA_PSIZE*args.PCA_PSIZE])
@@ -328,6 +335,7 @@ def main():
             # ====================
             logging.info("Computing KDEs in each latent dimension for individual SD training subjects..")
             kdes_all_sd_tr_subs, z_vals, feats_tr, act_pats_tr = utils_kde.compute_latent_kdes_subjectwise(images = imtr,
+                                                                                                           train_dataset = args.train_dataset,
                                                                                                            image_size = image_size,
                                                                                                            image_depths = orig_data_siz_z_train,
                                                                                                            image_placeholder = images_pl,

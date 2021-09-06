@@ -23,8 +23,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "CSF") # RUNMC / CSF
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC / CSF / UMC / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1
+parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Batch settings
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
@@ -59,7 +60,10 @@ orig_data_siz_z = loaded_training_data[7]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+if args.train_dataset == 'UMC':
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 logging.info('SD training directory: %s' %log_dir)
 log_dir_pdfs = log_dir + 'onedpdfs/'

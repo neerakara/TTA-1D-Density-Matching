@@ -324,18 +324,19 @@ def load_and_maybe_process_data(input_folder,
 # function to read a single subjects image and labels without any pre-processing
 # ===============================================================
 def load_without_size_preprocessing(input_folder,
+                                    sub_dataset,
                                     patient_id,
                                     protocol):
                     
-    img_path = input_folder + patient_id + '/pre' + protocol + '.nii.gz'
-    lbl_path = input_folder + patient_id + '/wmh.nii.gz'
+    img_path = input_folder + sub_dataset + '/' + patient_id + '/pre/' + protocol + '.nii.gz'
+    lbl_path = input_folder + sub_dataset + '/' + patient_id + '/wmh.nii.gz'
 
     img = utils.load_nii(img_path = img_path)[0]
     lbl = utils.load_nii(img_path = lbl_path)[0]
-    lbl[lbl!=1.0] = 0.0
     
-    # normalize the image
+    # normalize the image and set all non-'one' fg labels to zero
     img = utils.normalise_image(img, norm_type='div_by_max')
+    lbl[lbl!=1.0] = 0.0
     
     return img, lbl
 

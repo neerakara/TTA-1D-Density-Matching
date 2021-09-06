@@ -370,7 +370,7 @@ def compute_kl_between_gaussian(mu_sd,
                                 order = 'SD_vs_TD'):
 
     if order == 'SD_vs_TD':
-        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_td / var_sd) + (var_sd + (mu_sd - mu_td)**2) / var_td)
+        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_td / var_sd) + (var_sd + (mu_sd - mu_td)**2) / (var_td + 1e-2))
 
     elif order == 'TD_vs_SD':
         loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_sd / var_td) + (var_td + (mu_td - mu_sd)**2) / var_sd)
@@ -457,7 +457,12 @@ def compute_sd_kdes(train_dataset,
     # =========================
     # Loop over all SD subjects
     # =========================
-    for sub_num in range(size_z.shape[0]):
+    if train_dataset == 'HCPT1':
+        num_subjects = 10 # 10 subjects should likely provide enough variability for brain 
+    else:
+        num_subjects = size_z.shape[0]
+
+    for sub_num in range(num_subjects):
 
         # =========================
         # Extract one SD subject
@@ -562,7 +567,12 @@ def compute_sd_gaussians(filename,
         logging.info("Computing Gaussian params..")         
         gaussians_sd = []            
 
-        for sub_num in range(size_z.shape[0]):
+        if train_dataset == 'HCPT1':
+            num_subjects = 10 # 10 subjects should likely provide enough variability for brain 
+        else:
+            num_subjects = size_z.shape[0]
+
+        for sub_num in range(num_subjects):
             
             logging.info("==== Computing Gaussian for subject " + str(sub_num) + '..')
             if train_dataset == 'HCPT1': # circumventing a bug in the way size_z is written for HCP images
@@ -673,6 +683,7 @@ def compute_pca_latent_kdes(latents, alpha):
 # ==================================
 # ==================================
 def compute_latent_kdes_subjectwise(images,
+                                    train_dataset,
                                     image_size,
                                     image_depths,
                                     image_placeholder,
@@ -692,7 +703,12 @@ def compute_latent_kdes_subjectwise(images,
     feats_allsubs = np.zeros([image_depths.shape[0], image_size[0], image_size[1]]) 
     kdes_allsubs = []
 
-    for sub_num in range(image_depths.shape[0]):
+    if train_dataset == 'HCPT1':
+        num_subjects = 10 # 10 subjects should likely provide enough variability for brain 
+    else:
+        num_subjects = image_depths.shape[0]
+
+    for sub_num in range(num_subjects):
         
         logging.info("Subject " + str(sub_num+1))
         

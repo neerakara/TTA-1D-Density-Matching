@@ -21,14 +21,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "CSF") # RUNMC / CSF
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC / CSF / UMC / HCPT1
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
-parser.add_argument('--num_labels', type = int, default = 4) # 3 / 4
+parser.add_argument('--num_labels', type = int, default = 15) # 3 / 4 / 2 / 15
 # Batch settings
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # KDE hyperparameters
-parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
 parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
@@ -38,7 +38,7 @@ parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 # Save which pdfs
 parser.add_argument('--save_cnn_pdfs', type = int, default = 1) # 1 / 0
-parser.add_argument('--save_pca_pdfs', type = int, default = 1) # 1 / 0
+parser.add_argument('--save_pca_pdfs', type = int, default = 0) # 1 / 0
 # parse arguments
 args = parser.parse_args()
 

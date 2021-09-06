@@ -53,10 +53,11 @@ logging.info("File start running...")
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "CSF") # RUNMC / CSF
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "HVHD") # BMC / USZ / UCL / BIDMC / HK / UHE / HVHD
+parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
 
@@ -67,7 +68,7 @@ parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 # Whether to use Gaussians / KDEs
 parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / EM1 / EM2
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
@@ -76,7 +77,8 @@ parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
-parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
+parser.add_argument('--PCA_STRIDE', type = int, default = 8)
+# (for UMC, where this needs to set to 2 to get enough 'fg' patches for all subjects)
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
@@ -84,7 +86,8 @@ parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 8) # set to 8 for Cardiac as the volumes contain less that 16 slices, set to 16 for other anatomies
+parser.add_argument('--b_size', type = int, default = 16)
+# (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
@@ -147,7 +150,10 @@ subject_name = str(name_test_subjects[sub_num])[2:-1]
 logging.info(subject_name)
 
 # dir where the SD mdoels have been saved
-expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+if args.train_dataset == 'UMC':
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # dir where the SD PDFs have been saved
@@ -260,9 +266,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # Define ops for computing parameters of Gaussian distributions at each channel of each layer
             # ================================================================
             td_means, td_variances = utils_kde.compute_1d_gaussian_parameters(args.feature_subsampling_factor,
-                                                                            args.features_randomized,
-                                                                            delta_x_pl,
-                                                                            delta_y_pl)
+                                                                              args.features_randomized,
+                                                                              delta_x_pl,
+                                                                              delta_y_pl)
 
             # =================================
             # Compute KL divergence between Gaussians
@@ -353,9 +359,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # Extract patches
             # =============
             patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
-                                                        channel = 0, 
-                                                        psize = args.PCA_PSIZE,
-                                                        stride = args.PCA_STRIDE)        
+                                                         channel = 0, 
+                                                         psize = args.PCA_PSIZE,
+                                                         stride = args.PCA_STRIDE)        
 
             # =============
             # Get indices of active patches
@@ -386,24 +392,24 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # =============
             for c in range(features_td.shape[-1]):
                 patches_features_td_c = utils_kde.extract_patches(features_td,
-                                                                channel = c,
-                                                                psize = args.PCA_PSIZE,
-                                                                stride = args.PCA_STRIDE)
+                                                                  channel = c,
+                                                                  psize = args.PCA_PSIZE,
+                                                                  stride = args.PCA_STRIDE)
 
                 # =============
                 # select active patches
                 # =============
                 patches_features_td_c_active = tf.gather(patches_features_td_c,
-                                                        indices_active_patches,
-                                                        axis=0)
+                                                         indices_active_patches,
+                                                         axis=0)
 
                 # =============
                 # compute PCA latent representation of these patches
                 # =============
                 latent_of_active_patches_td_c = utils_kde.compute_pca_latents(patches_features_td_c_active, # [num_patches, psize*psize]
-                                                                            tf.gather(pca_mean_features_pl, c, axis=0), # [pca.mean_ --> [psize*psize]]
-                                                                            tf.gather(pca_components_pl, c, axis=0), # [pca.components_ --> [num_components, psize*psize]]
-                                                                            tf.gather(pca_variance_pl, c, axis=0)) # [pca.explained_variance_ --> [num_components]]
+                                                                              tf.gather(pca_mean_features_pl, c, axis=0), # [pca.mean_ --> [psize*psize]]
+                                                                              tf.gather(pca_components_pl, c, axis=0), # [pca.components_ --> [num_components, psize*psize]]
+                                                                              tf.gather(pca_variance_pl, c, axis=0)) # [pca.explained_variance_ --> [num_components]]
                 # =============
                 # concat to array containing the latent reps for all channels of the last layer
                 # =============
@@ -416,8 +422,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # compute per-dimension KDE of the latents
             # =============
             kde_latents_td = utils_kde.compute_pca_latent_kdes_tf(latent_of_active_patches_td, # [num_samples, num_pca_latents * num_channels]
-                                                                z_kde_pl,
-                                                                args.PCA_KDE_ALPHA)
+                                                                  z_kde_pl,
+                                                                  args.PCA_KDE_ALPHA)
 
             # =============
             # KL loss between SD and TD KDEs
@@ -598,7 +604,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # TTA / SFDA iterations
         # ===================================
         step = 0
-        best_loss = 1000.0
+        best_loss = 100000.0
 
         while (step < tta_max_steps):
             
@@ -656,31 +662,31 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 if args.PDF_TYPE == 'KDE':
 
                     feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
-                            sd_kdes_g1_pl: sd_kdes_g1_this_step, 
-                            sd_kdes_g2_pl: sd_kdes_g2_this_step, 
-                            sd_kdes_g3_pl: sd_kdes_g3_this_step, 
-                            x_kde_g1_pl: x_values_g1, 
-                            x_kde_g2_pl: x_values_g2, 
-                            x_kde_g3_pl: x_values_g3, 
-                            alpha_pl: args.KDE_ALPHA,
-                            lr_pl: tta_learning_rate,
-                            delta_x_pl: padding_x,
-                            delta_y_pl: padding_y,
-                            pca_mean_features_pl: pca_means,
-                            pca_components_pl: pca_pcs,
-                            pca_variance_pl: pca_vars,
-                            z_kde_pl: z_values,
-                            kde_latents_sd_pl: sd_kde_latents_this_step,
-                            lambda_pca_pl: args.PCA_LAMBDA}
+                               sd_kdes_g1_pl: sd_kdes_g1_this_step, 
+                               sd_kdes_g2_pl: sd_kdes_g2_this_step, 
+                               sd_kdes_g3_pl: sd_kdes_g3_this_step, 
+                               x_kde_g1_pl: x_values_g1, 
+                               x_kde_g2_pl: x_values_g2, 
+                               x_kde_g3_pl: x_values_g3, 
+                               alpha_pl: args.KDE_ALPHA,
+                               lr_pl: tta_learning_rate,
+                               delta_x_pl: padding_x,
+                               delta_y_pl: padding_y,
+                               pca_mean_features_pl: pca_means,
+                               pca_components_pl: pca_pcs,
+                               pca_variance_pl: pca_vars,
+                               z_kde_pl: z_values,
+                               kde_latents_sd_pl: sd_kde_latents_this_step,
+                               lambda_pca_pl: args.PCA_LAMBDA}
 
                 elif args.PDF_TYPE == 'GAUSSIAN':
 
                     feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
-                            sd_means_pl: sd_gaussian_this_step[:,0], 
-                            sd_variances_pl: sd_gaussian_this_step[:,1],
-                            lr_pl: tta_learning_rate,
-                            delta_x_pl: padding_x,
-                            delta_y_pl: padding_y}
+                               sd_means_pl: sd_gaussian_this_step[:,0], 
+                               sd_variances_pl: sd_gaussian_this_step[:,1],
+                               lr_pl: tta_learning_rate,
+                               delta_x_pl: padding_x,
+                               delta_y_pl: padding_y}
 
                 # run the accumulate gradients op 
                 sess.run(accumulate_gradients_op, feed_dict=feed_dict)
@@ -749,15 +755,15 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                             label_predicted.shape[3]))
                 
                 image_normalized = np.reshape(image_normalized,
-                                            (image_normalized.shape[0]*image_normalized.shape[1],
-                                            image_normalized.shape[2],
-                                            image_normalized.shape[3]))
+                                             (image_normalized.shape[0]*image_normalized.shape[1],
+                                             image_normalized.shape[2],
+                                             image_normalized.shape[3]))
                 
             label_predicted = label_predicted[:test_image.shape[0], ...]
             image_normalized = image_normalized[:test_image.shape[0], ...]
 
             if args.test_dataset in ['UCL', 'HK', 'BIDMC']:
-                label_predicted[label_predicted!=0] = 1
+                label_predicted[label_predicted!=0.0] = 1.0
             dice_wrt_gt = met.f1_score(test_image_gt.flatten(), label_predicted.flatten(), average=None) 
             summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice: np.mean(dice_wrt_gt[1:])}), step)
 
@@ -809,18 +815,18 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     # Select a batch from the center of the SD image
                     tmp = sd_image.shape[0] // 2 - b_size//2
                     features_for_display_sd = sess.run(tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv7_2_bn/FusedBatchNorm:0'),
-                                                    feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
+                                                       feed_dict={images_pl: np.expand_dims(sd_image[tmp:tmp+b_size, ...], axis=-1)})
                     
                     # Display
                     utils_vis.write_feature_summaries(step,
-                                                    summary_writer,
-                                                    sess,
-                                                    display_features_sd_summary,
-                                                    display_features_sd_pl,
-                                                    features_for_display_sd,
-                                                    display_features_td_summary,
-                                                    display_features_td_pl,
-                                                    features_for_display_td)
+                                                      summary_writer,
+                                                      sess,
+                                                      display_features_sd_summary,
+                                                      display_features_sd_pl,
+                                                      features_for_display_sd,
+                                                      display_features_td_summary,
+                                                      display_features_td_pl,
+                                                      features_for_display_td)
 
                 # ===========================
                 # Visualize KDE / Gaussian alignment
@@ -845,51 +851,58 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     test_var = test_var / num_batches
 
                     utils_vis.write_gaussians(step,
-                                            summary_writer,
-                                            sess,
-                                            pdfs_summary,
-                                            display_pdfs_pl,
-                                            np.mean(gaussians_sd, axis=0)[:,0],
-                                            np.mean(gaussians_sd, axis=0)[:,1],
-                                            test_mu,
-                                            test_var,
-                                            log_dir_tta,
-                                            nlabels)
+                                              summary_writer,
+                                              sess,
+                                              pdfs_summary,
+                                              display_pdfs_pl,
+                                              np.mean(gaussians_sd, axis=0)[:,0],
+                                              np.mean(gaussians_sd, axis=0)[:,1],
+                                              test_mu,
+                                              test_var,
+                                              log_dir_tta,
+                                              nlabels)
 
                 elif args.PDF_TYPE == 'KDE':
                     b_size = args.b_size
                     num_batches = 0
-                    for b_i in range(0, test_image.shape[0], b_size):
+
+                    # initial batches in brain datasets are only background. This leads to no 'active' patches, which creates problems in pca computations..
+                    if args.train_dataset == 'HCPT1':
+                        b_i_start = 50
+                    else:
+                        b_i_start = 0
+                    
+                    for b_i in range(b_i_start, test_image.shape[0]-b_i_start, b_size):
                         
                         if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.
 
                             batch_tmp = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
                             
                             kdes_g1_this_batch = sess.run(td_kdes_g1, feed_dict={images_pl: batch_tmp,
-                                                                                x_kde_g1_pl: x_values_g1,
-                                                                                alpha_pl: args.KDE_ALPHA,
-                                                                                delta_x_pl: padding_x,
-                                                                                delta_y_pl: padding_y})
+                                                                                 x_kde_g1_pl: x_values_g1,
+                                                                                 alpha_pl: args.KDE_ALPHA,
+                                                                                 delta_x_pl: padding_x,
+                                                                                 delta_y_pl: padding_y})
                             
                             kdes_g2_this_batch = sess.run(td_kdes_g2, feed_dict={images_pl: batch_tmp,
-                                                                                x_kde_g2_pl: x_values_g2,
-                                                                                alpha_pl: args.KDE_ALPHA,
-                                                                                delta_x_pl: padding_x,
-                                                                                delta_y_pl: padding_y})
+                                                                                 x_kde_g2_pl: x_values_g2,
+                                                                                 alpha_pl: args.KDE_ALPHA,
+                                                                                 delta_x_pl: padding_x,
+                                                                                 delta_y_pl: padding_y})
                             
                             kdes_g3_this_batch = sess.run(td_kdes_g3, feed_dict={images_pl: batch_tmp,
-                                                                                x_kde_g3_pl: x_values_g3,
-                                                                                alpha_pl: args.KDE_ALPHA,
-                                                                                delta_x_pl: padding_x,
-                                                                                delta_y_pl: padding_y})
+                                                                                 x_kde_g3_pl: x_values_g3,
+                                                                                 alpha_pl: args.KDE_ALPHA,
+                                                                                 delta_x_pl: padding_x,
+                                                                                 delta_y_pl: padding_y})
 
                             kdes_latents_this_batch = sess.run(kde_latents_td, feed_dict={images_pl: batch_tmp,
-                                                                                        z_kde_pl: z_values,
-                                                                                        pca_mean_features_pl: pca_means,
-                                                                                        pca_components_pl: pca_pcs,
-                                                                                        pca_variance_pl: pca_vars})
+                                                                                          z_kde_pl: z_values,
+                                                                                          pca_mean_features_pl: pca_means,
+                                                                                          pca_components_pl: pca_pcs,
+                                                                                          pca_variance_pl: pca_vars})
 
-                            if b_i == 0:
+                            if b_i == b_i_start:
                                 kdes_td_g1_this_step = kdes_g1_this_batch
                                 kdes_td_g2_this_step = kdes_g2_this_batch
                                 kdes_td_g3_this_step = kdes_g3_this_batch

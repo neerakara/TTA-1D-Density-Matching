@@ -394,6 +394,31 @@ def load_testing_data(test_dataset,
         ids = np.arange(num_test_subjects)
 
     # ================================================================
+    # Brain lesions (WMH)
+    # ================================================================
+    elif test_dataset == 'UMC' or test_dataset == 'NUHS':
+        data_brain_lesions = data_wmh.load_and_maybe_process_data(sys_config.orig_data_root_wmh,
+                                                                  sys_config.preproc_folder_wmh,
+                                                                  image_size,
+                                                                  target_resolution,
+                                                                  force_overwrite=False,
+                                                                  sub_dataset = test_dataset,
+                                                                  cv_fold_number = cv_fold_num,
+                                                                  protocol = 'FLAIR')
+
+        imts = data_brain_lesions['images_test']
+        gtts = data_brain_lesions['labels_test']
+        orig_data_res_x = data_brain_lesions['px_test'][:]
+        orig_data_res_y = data_brain_lesions['py_test'][:]
+        orig_data_res_z = data_brain_lesions['pz_test'][:]
+        orig_data_siz_x = data_brain_lesions['nx_test'][:]
+        orig_data_siz_y = data_brain_lesions['ny_test'][:]
+        orig_data_siz_z = data_brain_lesions['nz_test'][:]
+        name_test_subjects = data_brain_lesions['patnames_test']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+        ids = np.arange(num_test_subjects)
+
+    # ================================================================
     # HCP T1
     # ================================================================
     elif test_dataset == 'HCPT1':
@@ -422,7 +447,7 @@ def load_testing_data(test_dataset,
         orig_data_siz_y = data_brain['ny'][:]
         orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
+        num_test_subjects = 10 # imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
 
     # ================================================================
@@ -454,7 +479,7 @@ def load_testing_data(test_dataset,
         orig_data_siz_y = data_brain['ny'][:]
         orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
+        num_test_subjects = 10 # imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
         
     # ================================================================
@@ -486,7 +511,7 @@ def load_testing_data(test_dataset,
         orig_data_siz_y = data_brain['ny'][:]
         orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
+        num_test_subjects = 10 # imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
 
     # ================================================================
@@ -518,7 +543,7 @@ def load_testing_data(test_dataset,
         orig_data_siz_y = data_brain['ny'][:]
         orig_data_siz_z = data_brain['nz'][:]
         name_test_subjects = data_brain['patnames']
-        num_test_subjects = imts.shape[0] // image_depth
+        num_test_subjects = 10 # imts.shape[0] // image_depth
         ids = np.arange(idx_start, idx_end)
 
     return (imts,  # 0
@@ -548,7 +573,6 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                            protocol = 'T1',
                                                                            preprocessing_folder = sys_config.preproc_folder_hcp,
                                                                            depth = image_depth)
-        num_rotations = 0  
         
     elif test_dataset_name == 'HCPT2':
         # image will be normalized to [0,1]
@@ -557,7 +581,6 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                            protocol = 'T2',
                                                                            preprocessing_folder = sys_config.preproc_folder_hcp,
                                                                            depth = image_depth)
-        num_rotations = 0  
 
     elif test_dataset_name == 'CALTECH':
         # image will be normalized to [0,1]
@@ -565,7 +588,6 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                              site_name = 'CALTECH',
                                                                              idx = ids[sub_num],
                                                                              depth = image_depth)
-        num_rotations = 0
 
     elif test_dataset_name == 'STANFORD':
         # image will be normalized to [0,1]
@@ -573,7 +595,6 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                              site_name = 'STANFORD',
                                                                              idx = ids[sub_num],
                                                                              depth = image_depth)
-        num_rotations = 0
 
     elif test_dataset_name in ['BMC', 'RUNMC']:
         # image will be normalized to [0,1]
@@ -583,25 +604,28 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                            cv_fold_num=1,
                                                                            train_test='test',
                                                                            idx=ids[sub_num])
-        num_rotations = 0
 
     elif test_dataset_name == 'USZ':
         # image will be normalized to [0,1]
         image_orig, labels_orig = data_pirad_erc.load_without_size_preprocessing(sys_config.orig_data_root_pirad_erc,
                                                                                  subject_name,
                                                                                  labeller='ek')
-        num_rotations = -3
 
     elif test_dataset_name in ['UCL', 'BIDMC', 'HK']:
         # image will be normalized to [0,1]
         image_orig, labels_orig = data_promise.load_without_size_preprocessing(sys_config.preproc_folder_promise,
                                                                                subject_name[4:6])
-        num_rotations = 0
 
     elif test_dataset_name in ['CSF', 'UHE', 'HVHD']:
         # image will be normalized to [0,1]
         image_orig, labels_orig = data_mnms.load_without_size_preprocessing(sys_config.preproc_folder_mnms,
                                                                             subject_name)
-        num_rotations = 0
 
-    return image_orig, labels_orig, num_rotations
+    elif test_dataset_name in ['VU', 'UMC', 'NUHS']:
+        # image will be normalized to [0,1]
+        image_orig, labels_orig = data_wmh.load_without_size_preprocessing(sys_config.orig_data_root_wmh,
+                                                                           test_dataset_name,
+                                                                           subject_name,
+                                                                           'FLAIR')
+
+    return image_orig, labels_orig

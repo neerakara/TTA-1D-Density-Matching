@@ -174,6 +174,41 @@ def get_dataset_dependent_params(train_dataset,
         b_size_compute_sd_pdfs = 2 
         b_size_compute_sd_gaussians = 0 # Use full images
 
+    elif train_dataset in ['VU', 'UMC', 'NUHS']:
+
+        # =================================
+        # size, resolution, etc.
+        # =================================
+        image_size = (256, 256)
+        nlabels = 2
+        target_resolution = (1.0, 1.0)
+        downsampling_factor_x = 1
+        downsampling_factor_y = 1
+        downsampling_factor_z = 1
+        image_depth_tr = 48
+        image_depth_ts = 48
+
+        # =================================
+        # Whether to evaluate binary dice or over multiple classes
+        # =================================
+        whole_gland_results = False
+
+        # =================================
+        # number of TTA iterations
+        # =================================
+        tta_max_steps = 301 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_model_saving_freq = 50
+        tta_vis_freq = 10
+
+        # =================================
+        # Batch sizes for SD Gaussian / KDE computation
+        # =================================
+        # b_size_compute_sd_pdfs is set to a low value,
+        # because the last incomplete batch is ignored in the SD KDE computation.
+        # So we would like to cover almost the whole image with 'full' batches.
+        b_size_compute_sd_pdfs = 2 
+        b_size_compute_sd_gaussians = 0 # Use full images
+
     return (image_size, # 0
             nlabels, # 1
             target_resolution, # 2

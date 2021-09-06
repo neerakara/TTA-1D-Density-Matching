@@ -20,30 +20,32 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "CSF") # BMC / RUNMC / UCL / HK / BIDMC / USZ / CSF
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
+parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset 
-parser.add_argument('--test_dataset', default = "HVHD") # BMC / RUNMC / UCL / HK / BIDMC / USZ / CSF / UHE / HVHD
+parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
+parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
-parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 64 / 128
+parser.add_argument('--PCA_STRIDE', type = int, default = 8)
+# (for UMC, where this needs to set to 2 to get enough 'fg' patches for all subjects)
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.0) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
@@ -52,7 +54,8 @@ parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16) # 1 / 2 / 4 (requires 24G GPU)
+parser.add_argument('--b_size', type = int, default = 16)
+# (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
 parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
@@ -78,12 +81,16 @@ whole_gland_results = dataset_params[5]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+if args.train_dataset == 'UMC':
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
 if args.NORMALIZE == 1:
     exp_str = exp_config.make_tta_exp_name(args)
     log_dir_tta = log_dir_sd + exp_str
+    logging.info(log_dir_tta)
 
 # ==================================================================
 # main function for inference
@@ -334,11 +341,19 @@ def main():
         # ==================================================================
         # read the original segmentation mask
         # ==================================================================
-        image_orig, labels_orig, num_rotations = utils_data.load_testing_data_wo_preproc(test_dataset_name,
-                                                                                         ids,
-                                                                                         sub_num,
-                                                                                         subject_name,
-                                                                                         image_depth_ts)
+        image_orig, labels_orig = utils_data.load_testing_data_wo_preproc(test_dataset_name,
+                                                                          ids,
+                                                                          sub_num,
+                                                                          subject_name,
+                                                                          image_depth_ts)
+
+        # USZ images and labels were rotated in the preprocessing script
+        # So the predicted labels will also be rotated wrt GT
+        # undo the rotation before computing the dice wrt GT
+        if test_dataset_name == 'USZ':
+            num_rot = -3
+        else:
+            num_rot = 0
 
         # ==================================================================
         # convert the predicitons back to original resolution
@@ -349,7 +364,7 @@ def main():
                                                               orig_data_siz_x[sub_num],
                                                               orig_data_siz_y[sub_num],
                                                               order_interpolation = 0,
-                                                              num_rotations = num_rotations).astype(np.uint8)
+                                                              num_rotations = num_rot).astype(np.uint8)
 
         # ==================================================================
         # Name of visualization
@@ -400,11 +415,19 @@ def main():
             d_vis = image_depth_ts
             # ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
             ids_vis = [d_vis // 2]
+            # need to rotate some datasets for consistent visualizations
+            if test_dataset_name == 'USZ':
+                num_rot_vis = 3
+            elif test_dataset_name == 'UMC' or test_dataset_name == 'NUHS':
+                num_rot_vis = 1
+            else:
+                num_rot_vis = 0
+
             utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
                                                      x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
                                                      y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
                                                      gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
-                                                     num_rotations = - num_rotations, # rotate for consistent visualization across datasets
+                                                     num_rotations = num_rot_vis, # rotate for consistent visualization across datasets
                                                      savepath = savepath + '.png',
                                                      nlabels = nl,
                                                      ids=ids_vis)

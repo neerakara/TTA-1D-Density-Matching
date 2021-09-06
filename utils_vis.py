@@ -341,6 +341,9 @@ def write_gaussians(step,
                     deltas = [0, 32, 96, 224, 480, 608, 672, 704],
                     num_channels = 3):
 
+    if nlabels < num_channels:
+        num_channels = nlabels
+        
     # stitch images
     stitched_image = stitch_gaussians(sd_mu,
                                       sd_var,
