@@ -20,20 +20,20 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset 
-parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
+parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 100.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 
@@ -45,10 +45,10 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.0) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # How many moments to match and how?
-parser.add_argument('--LOSS_TYPE', default = "EM2") # KL / 
+parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 # Matching settings
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
@@ -56,7 +56,7 @@ parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16)
 # (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 4
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
@@ -438,7 +438,7 @@ def main():
         results_file.write(subject_name + ":: dice (mean, std over all FG labels): ")
         results_file.write(str(np.round(np.mean(dice_per_label_this_subject[1:]), 3)) + ", " + str(np.round(np.std(dice_per_label_this_subject[1:]), 3)))
         results_file.write(", hausdorff distance (mean, std over all FG labels): ")
-        results_file.write(str(np.round(np.mean(hsd_per_label_this_subject), 3)) + ", " + str(np.round(np.std(dice_per_label_this_subject[1:]), 3)) + "\n")
+        results_file.write(str(np.round(np.mean(hsd_per_label_this_subject[1:]), 3)) + ", " + str(np.round(np.std(dice_per_label_this_subject[1:]), 3)) + "\n")
         
         dice_per_label_per_subject.append(dice_per_label_this_subject)
         hsd_per_label_per_subject.append(hsd_per_label_this_subject)
@@ -465,16 +465,26 @@ def main():
     # ==================
     # write the mean dice over all subjects and all labels
     # ==================
+    mean_fg_dice_all_subjects = np.mean(dice_per_label_per_subject[:, 1:], axis=-1)
+    dice_mean = np.round(np.mean(mean_fg_dice_all_subjects), 3)
+    dice_std = np.round(np.std(mean_fg_dice_all_subjects), 3)
+    dice_median = np.round(np.median(mean_fg_dice_all_subjects), 3)
+
+    mean_fg_hsd_all_subjects = np.mean(hsd_per_label_per_subject[:, 1:], axis=-1)
+    hsd_mean = np.round(np.mean(mean_fg_hsd_all_subjects), 3)
+    hsd_std = np.round(np.std(mean_fg_hsd_all_subjects), 3)
+    hsd_median = np.round(np.median(mean_fg_hsd_all_subjects), 3)
+    
     results_file.write("================================== \n") 
-    results_file.write("DICE Mean, std. deviation over foreground labels over all subjects: " + str(np.round(np.mean(dice_per_label_per_subject[:,1:]), 3)) + ", " + str(np.round(np.std(dice_per_label_per_subject[:,1:]), 3)) + "\n")
-    results_file.write("HSD Mean, std. deviation over labels over all subjects: " + str(np.round(np.mean(hsd_per_label_per_subject), 3)) + ", " + str(np.round(np.std(hsd_per_label_per_subject), 3)) + "\n")
+    results_file.write("DICE mean, median, std. deviation over foreground labels over all subjects: " + str(dice_mean) + ", " + str(dice_median) + ", " + str(dice_std) + "\n")
+    results_file.write("HSD mean, median, std. deviation over labels over all subjects: " + str(hsd_mean) + ", " + str(hsd_median) + ", " + str(hsd_std) + "\n")
     results_file.write("================================== \n") 
     results_file.close()
 
     # ==================
     # read results and print them out
     # ==================
-    utils.print_results(results_filename + '.txt', test_dataset_name)
+    # utils.print_results(results_filename + '.txt', test_dataset_name)
         
 # ==================================================================
 # ==================================================================

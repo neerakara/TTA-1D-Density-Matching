@@ -373,7 +373,7 @@ def compute_kl_between_gaussian(mu_sd,
         loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_td / var_sd) + (var_sd + (mu_sd - mu_td)**2) / (var_td + 1e-2))
 
     elif order == 'TD_vs_SD':
-        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_sd / var_td) + (var_td + (mu_td - mu_sd)**2) / var_sd)
+        loss_gaussian_kl_op = tf.reduce_mean(tf.math.log(var_sd / var_td) + (var_td + (mu_td - mu_sd)**2) / (var_sd + 1e-2))
 
     return loss_gaussian_kl_op
                                                                                             

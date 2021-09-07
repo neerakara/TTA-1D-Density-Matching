@@ -41,6 +41,8 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN")
+
 # visualization
 parser.add_argument('--redraw', type = int, default = 0) # 0 / 1
 
@@ -186,7 +188,7 @@ def main():
         # ================================================================
         # Create dir for PCA
         # ================================================================
-        pca_dir = log_dir_sd + 'onedpdfs/' + exp_config.make_pca_dir_name(args, pdftype='GAUSSIAN')
+        pca_dir = log_dir_sd + 'onedpdfs/' + exp_config.make_pca_dir_name(args)
         logging.info('PCA directory: ' + pca_dir)
         pca_figures_dir = pca_dir + 'figures/'
         if not tf.gfile.Exists(pca_dir):

@@ -42,6 +42,8 @@ parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
 
+parser.add_argument('--PDF_TYPE', default = "KDE")
+
 # parse arguments
 args = parser.parse_args()
 

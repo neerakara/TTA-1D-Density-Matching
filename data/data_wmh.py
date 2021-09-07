@@ -37,6 +37,12 @@ def test_train_val_split(patient_id,
         elif patient_id in sub_dataset_ids[-15:-10]: return 'validation'
         else: return 'train'
 
+    # used to accumulate evals of cv1 and cv2 together
+    elif cv_fold_number == 3:
+        if patient_id in sub_dataset_ids[-10:]: return 'test'
+        elif patient_id in sub_dataset_ids[-15:-10]: return 'validation'
+        else: return 'train'
+
 # ===============================================================
 # ===============================================================
 def count_slices_and_patient_ids_list(input_folder,
