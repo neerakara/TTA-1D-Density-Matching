@@ -446,6 +446,30 @@ def load_testing_data(test_dataset,
         ids = np.arange(num_test_subjects)
 
     # ================================================================
+    # SPINE
+    # ================================================================
+    elif test_dataset == 'site1' or test_dataset == 'site2' or test_dataset == 'site3' or test_dataset == 'site4':
+        data_spine = data_scgm.load_and_maybe_process_data(sys_config.orig_data_root_scgm,
+                                                           sys_config.preproc_folder_scgm,
+                                                           image_size,
+                                                           target_resolution,
+                                                           force_overwrite=False,
+                                                           sub_dataset = test_dataset,
+                                                           cv_fold_number = cv_fold_num)
+
+        imts = data_spine['images_test']
+        gtts = data_spine['labels_test']
+        orig_data_res_x = data_spine['px_test'][:]
+        orig_data_res_y = data_spine['py_test'][:]
+        orig_data_res_z = data_spine['pz_test'][:]
+        orig_data_siz_x = data_spine['nx_test'][:]
+        orig_data_siz_y = data_spine['ny_test'][:]
+        orig_data_siz_z = data_spine['nz_test'][:]
+        name_test_subjects = data_spine['patnames_test']
+        num_test_subjects = orig_data_siz_z.shape[0] 
+        ids = np.arange(num_test_subjects)
+
+    # ================================================================
     # HCP T1
     # ================================================================
     elif test_dataset == 'HCPT1':
@@ -654,5 +678,12 @@ def load_testing_data_wo_preproc(test_dataset_name,
                                                                            test_dataset_name,
                                                                            subject_name,
                                                                            'FLAIR')
+
+    elif test_dataset_name in ['site1', 'site2', 'site3', 'site4']:
+        # image will be normalized to [0,1]
+        image_orig, labels_orig = data_scgm.load_without_size_preprocessing(sys_config.orig_data_root_scgm,
+                                                                            sys_config.preproc_folder_scgm,
+                                                                            test_dataset_name,
+                                                                            subject_name)
 
     return image_orig, labels_orig

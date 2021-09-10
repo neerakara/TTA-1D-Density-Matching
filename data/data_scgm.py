@@ -291,7 +291,7 @@ def load_and_maybe_process_data(input_folder,
     size_str = '_'.join([str(i) for i in size])
     res_str = '_'.join([str(i) for i in target_resolution])
 
-    data_file_name = 'data_2d_size_%s_res_%s_%s.hdf5' % (size_str, res_str, sub_dataset)
+    data_file_name = 'data_2d_size_%s_res_%s_%s_cv%d.hdf5' % (size_str, res_str, sub_dataset, cv_fold_number)
 
     data_file_path = os.path.join(preprocessing_folder, data_file_name)
 
@@ -323,7 +323,7 @@ def load_without_size_preprocessing(input_folder,
     if sub_dataset == 'site1':
         img_path = input_folder + sub_dataset + '-sc' + patient_id + '-image.nii.gz'
     else:
-        img_path = preproc_folder + 'IndividualNIFTI/' + sub_dataset + patient_id + '_n4.nii.gz'
+        img_path = preproc_folder + 'IndividualNIFTI/' + sub_dataset + '_' + patient_id + '_n4.nii.gz'
     lbl_path = input_folder + sub_dataset + '-sc' + patient_id + '-mask-r1.nii.gz'
 
     img = utils.load_nii(img_path = img_path)[0]

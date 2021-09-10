@@ -20,13 +20,13 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "site2") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset 
-parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
-parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+parser.add_argument('--test_dataset', default = "site2") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site1, site2, site3, site4
+parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2 / 3 / 4
+parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
@@ -81,7 +81,7 @@ whole_gland_results = dataset_params[5]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-if args.train_dataset == 'UMC':
+if args.train_dataset in ['UMC', 'NUHS', 'site1', 'site2', 'site3', 'site4']:
     expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
@@ -412,25 +412,41 @@ def main():
         # ================================================================
         save_visual_results = True
         if save_visual_results == True:
+            
             d_vis = image_depth_ts
             # ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)
             ids_vis = [d_vis // 2]
+            
             # need to rotate some datasets for consistent visualizations
             if test_dataset_name == 'USZ':
                 num_rot_vis = 3
-            elif test_dataset_name == 'UMC' or test_dataset_name == 'NUHS':
+            elif test_dataset_name in ['UMC', 'NUHS', 'site1', 'site2', 'site3', 'site4']:
                 num_rot_vis = 1
             else:
                 num_rot_vis = 0
 
-            utils_vis.save_sample_prediction_results(x = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                     x_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis),
-                                                     y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis),
-                                                     gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis),
+            # for SCGM, crop and rescale before vis
+            if test_dataset_name in ['site1', 'site2', 'site3', 'site4']:
+                scale_vector = [orig_data_res_x[sub_num] / target_resolution[0], orig_data_res_y[sub_num] / target_resolution[1]]
+            else:
+                scale_vector = []
+
+            # make z size the same for consistent vis
+            im_orig = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis)
+            im_norm = utils.crop_or_pad_volume_to_size_along_z(image_orig, d_vis)
+            y_pred = utils.crop_or_pad_volume_to_size_along_z(predicted_labels_orig_res_and_size, d_vis)
+            gt = utils.crop_or_pad_volume_to_size_along_z(labels_orig, d_vis)
+
+            # visualize
+            utils_vis.save_sample_prediction_results(x = im_orig,
+                                                     x_norm = im_norm,
+                                                     y_pred = y_pred,
+                                                     gt = gt,
                                                      num_rotations = num_rot_vis, # rotate for consistent visualization across datasets
                                                      savepath = savepath + '.png',
                                                      nlabels = nl,
-                                                     ids=ids_vis)
+                                                     ids=ids_vis,
+                                                     scale_vector = scale_vector)
                                    
         # ================================
         # write the mean fg dice of this subject to the text file

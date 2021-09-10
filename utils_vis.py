@@ -12,6 +12,8 @@ from scipy.stats import norm
 from skimage import color
 from skimage import io
 import tensorflow as tf
+from skimage.transform import rescale
+import utils
 
 # ==========================================================
 # ==========================================================
@@ -111,7 +113,8 @@ def save_sample_prediction_results(x,
                                    num_rotations,
                                    savepath,
                                    nlabels,
-                                   ids):
+                                   ids,
+                                   scale_vector = []):
 
     nc = len(ids)
     nr = 5
@@ -138,6 +141,19 @@ def save_sample_prediction_results(x,
         y_pred_vis = np.rot90(y_pred_[:, :, ids[c]], k=num_rotations)
         gt_vis = np.rot90(gt_[:, :, ids[c]], k=num_rotations)
         incorrect_mask_vis = np.rot90(incorrect_mask[:, :, ids[c]], k=num_rotations)
+
+        # for SCGM datasets, rescale and crop before visualization
+        if scale_vector != []:
+            x_vis = rescale(x_vis, scale_vector, order = 1, preserve_range = True, multichannel = False, mode = 'constant',anti_aliasing = False)
+            x_vis = utils.crop_or_pad_slice_to_size(x_vis, 200, 200)
+            x_norm_vis = rescale(x_norm_vis, scale_vector, order = 1, preserve_range = True, multichannel = False, mode = 'constant',anti_aliasing = False)
+            x_norm_vis = utils.crop_or_pad_slice_to_size(x_norm_vis, 200, 200)
+            y_pred_vis = rescale(y_pred_vis, scale_vector, order = 0, preserve_range = True, multichannel = False, mode = 'constant',anti_aliasing = False)
+            y_pred_vis = utils.crop_or_pad_slice_to_size(y_pred_vis, 200, 200)
+            gt_vis = rescale(gt_vis, scale_vector, order = 0, preserve_range = True, multichannel = False, mode = 'constant',anti_aliasing = False)
+            gt_vis = utils.crop_or_pad_slice_to_size(gt_vis, 200, 200)
+            incorrect_mask_vis = rescale(incorrect_mask_vis, scale_vector, order = 0, preserve_range = True, multichannel = False, mode = 'constant',anti_aliasing = False)
+            incorrect_mask_vis = utils.crop_or_pad_slice_to_size(incorrect_mask_vis, 200, 200)
 
         plt.subplot(nr, nc, nc*0 + c + 1); plt.imshow(x_vis, cmap='gray'); plt.colorbar(); plt.title('Image')
         plt.subplot(nr, nc, nc*1 + c + 1); plt.imshow(x_norm_vis, cmap='gray'); plt.colorbar(); plt.title('Normalized')
