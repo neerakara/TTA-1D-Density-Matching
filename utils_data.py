@@ -21,7 +21,7 @@ def load_training_data(train_dataset,
     # ================================================================
     # NCI
     # ================================================================
-    if train_dataset == 'RUNMC' or train_dataset == 'BMC':
+    if train_dataset in ['RUNMC', 'BMC']:
     
         logging.info('Reading NCI - ' + train_dataset + ' images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
@@ -51,7 +51,7 @@ def load_training_data(train_dataset,
         orig_data_siz_z_val = data_pros['nz_validation'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0] 
 
-    elif train_dataset == 'UCL' or train_dataset == 'BIDMC' or train_dataset == 'HK':
+    elif train_dataset in ['UCL', 'BIDMC', 'HK']:
         logging.info('Reading' + train_dataset + ' images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_promise)
 
@@ -80,7 +80,7 @@ def load_training_data(train_dataset,
         orig_data_siz_z_val = data_pros['nz_validation'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0] 
         
-    elif train_dataset == 'USZ':
+    elif train_dataset in ['USZ']:
         
         logging.info('Reading PIRAD_ERC images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_pirad_erc)
@@ -121,7 +121,7 @@ def load_training_data(train_dataset,
     # ================================================================
     # CARDIAC (MNMS)
     # ================================================================
-    elif train_dataset == 'HVHD' or train_dataset == 'CSF' or train_dataset == 'UHE':
+    elif train_dataset in ['HVHD', 'CSF', 'UHE']:
     
         logging.info('Reading MNMS - ' + train_dataset + ' images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_mnms)
@@ -153,7 +153,7 @@ def load_training_data(train_dataset,
     # ================================================================
     # Brain lesions (WMH)
     # ================================================================
-    elif train_dataset == 'UMC' or train_dataset == 'NUHS':
+    elif train_dataset in ['UMC', 'NUHS']:
         data_brain_lesions = data_wmh.load_and_maybe_process_data(sys_config.orig_data_root_wmh,
                                                                   sys_config.preproc_folder_wmh,
                                                                   image_size,

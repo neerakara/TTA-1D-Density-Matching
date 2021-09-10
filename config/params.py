@@ -16,16 +16,12 @@ norm_batch_norm = False
 # ====================================================
 model_handle_i2l = model_zoo.unet2D_i2l
 
-# ====================================================
-# TTA experiment identifier
-# ====================================================
-simul_string = 'simulated_domain_shifts/adaBN_v2/'
-
 # ======================================================================
 # training settings
 # ======================================================================
 batch_size = 16
 learning_rate = 1e-3
+learning_rate_tl = 1e-4
 optimizer_handle = tf.train.AdamOptimizer
 loss_type = 'dice'
 continue_run = False
@@ -35,6 +31,7 @@ debug = False
 # max steps and frequencies for base network trainings from scratch
 # ======================================================================
 max_steps = 30001
+max_steps_tl = 5001
 train_eval_frequency = 1000
 val_eval_frequency = 1000
 save_frequency = 1000
@@ -293,6 +290,15 @@ def make_tta_exp_name(args):
     exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
         
     exp_str = exp_str + '/'
+
+    return exp_str
+
+# ================================================================
+# Function to make the name for the experiment run according to TL parameters
+# ================================================================
+def make_tl_exp_name(args):
+    
+    exp_str = args.TL_STRING + args.test_dataset + '_cv' + str(args.test_cv_fold_num) + '_vars' + args.TL_VARS + '_run' + str(args.tl_runnum) + '/'
 
     return exp_str
 
