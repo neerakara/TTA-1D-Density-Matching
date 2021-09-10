@@ -6,15 +6,21 @@ import data.data_promise as data_promise
 import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
 import data.data_wmh as data_wmh
+import data.data_scgm as data_scgm
 import numpy as np
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt 
+import os
 # import utils_vis
 
-anatomy = 'brain' # prostate / cardiac / wmh / brain
-dataset_name = 'HCPT1' # BMC, RUNMC, UCL, HK, BIDMC, USZ | UHE, CSF, HVHD | UMC, NUHS | HCPT1, CALTECH
-image_size = (256, 256)
+anatomy = 'spine' # prostate / cardiac / wmh / brain / spine
+dataset_name = 'site2' # BMC, RUNMC, UCL, HK, BIDMC, USZ | UHE, CSF, HVHD | UMC, NUHS | HCPT1, CALTECH | site1, site2, site3, site4
+
+if anatomy == 'spine':
+    image_size = (200, 200)
+else:
+    image_size = (256, 256)
 if anatomy == 'prostate':
     target_resolution = (0.625, 0.625)
 elif anatomy == 'cardiac':
@@ -23,6 +29,8 @@ elif anatomy == 'wmh':
     target_resolution = (1.0, 1.0)
 elif anatomy == 'brain':
     target_resolution = (0.7, 0.7)
+elif anatomy == 'spine':
+    target_resolution = (0.25, 0.25)
 
 if anatomy == 'brain':
     if dataset_name == 'CALTECH':
@@ -96,46 +104,63 @@ else:
                                                     sub_dataset = dataset_name,
                                                     cv_fold_number = 1,
                                                     protocol = 'FLAIR')
-    images = data['images_test']
-    labels = data['labels_test']
-    patnames = data['patnames_test']
-    orig_data_siz_z = data['nz_test'][:]
+    elif dataset_name in ['site1', 'site2', 'site3', 'site4']:
+        data = data_scgm.load_and_maybe_process_data(sys_config.orig_data_root_scgm,
+                                                    sys_config.preproc_folder_scgm,
+                                                    image_size,
+                                                    target_resolution,
+                                                    force_overwrite=False,
+                                                    sub_dataset = dataset_name,
+                                                    cv_fold_number = 1)
 
-# extract one test image volume
-for sub_num in range(10):# (orig_data_siz_z.shape[0]):
-    subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
-    subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])
-    image = images[subject_id_start_slice:subject_id_end_slice,:,:]  
-    label = labels[subject_id_start_slice:subject_id_end_slice,:,:]  
+for tt in ['train', 'test', 'validation']:
+# for tt in ['test']:
+    images = data['images_'+tt]
+    labels = data['labels_'+tt]
+    patnames = data['patnames_'+tt]
+    orig_data_siz_z = data['nz_'+tt][:]
 
-    patname = str(patnames[sub_num])[2:-1]
-    print(patname)
-    print(image.shape)
-    print(label.shape)
+    # extract one test image volume
+    for sub_num in range(orig_data_siz_z.shape[0]):
+        subject_id_start_slice = np.sum(orig_data_siz_z[:sub_num])
+        subject_id_end_slice = np.sum(orig_data_siz_z[:sub_num+1])
+        image = images[subject_id_start_slice:subject_id_end_slice,:,:]  
+        label = labels[subject_id_start_slice:subject_id_end_slice,:,:]  
 
-    image2d = image[image.shape[0]//2+20, :, :]
-    label2d = label[image.shape[0]//2+20, :, :]
+        patname = str(patnames[sub_num])[2:-1]
+        print(patname)
+        print(image.shape)
+        print(label.shape)
 
-    # make all FG labels the same
-    if anatomy == 'prostate':
-        label[label!=0] = 1
-    if anatomy == 'wmh':
-        image2d = np.rot90(image2d, k=-1)
-        label2d = np.rot90(label2d, k=-1)
-    elif anatomy == 'brain':
-        image2d = np.rot90(image2d, k=1)
-        label2d = np.rot90(label2d, k=1)
+        if dataset_name == 'HCPT1':
+            image2d = image[image.shape[0]//2+20, :, :]
+            label2d = label[image.shape[0]//2+20, :, :]
+        else:
+            image2d = image[image.shape[0]//2, :, :]
+            label2d = label[image.shape[0]//2, :, :]
 
-    savepath_base = '/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/figures/data_vis/' + anatomy + '/'
-    
-    plt.figure(figsize=[20,20])                        
-    plt.imshow(image2d, cmap='gray')
-    plt.axis('off')
-    plt.savefig(savepath_base + dataset_name + '_' + patname + '_image.png', bbox_inches='tight', pad_inches = 0, dpi=100)
-    plt.close()
+        # make all FG labels the same
+        if anatomy == 'prostate':
+            label[label!=0] = 1
+        if anatomy == 'wmh' or anatomy == 'spine':
+            image2d = np.rot90(image2d, k=-1)
+            label2d = np.rot90(label2d, k=-1)
+        elif anatomy == 'brain':
+            image2d = np.rot90(image2d, k=1)
+            label2d = np.rot90(label2d, k=1)
 
-    plt.figure(figsize=[20,20])                        
-    plt.imshow(label2d, cmap='gray')
-    plt.axis('off')
-    plt.savefig(savepath_base + dataset_name + '_' + patname + '_label.png', bbox_inches='tight', pad_inches = 0, dpi=100)
-    plt.close()
+        savepath_base = '/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/figures/data_vis/' + anatomy + '/'
+        if not os.path.exists(savepath_base):
+            os.makedirs(savepath_base)
+        
+        plt.figure(figsize=[20,20])                        
+        plt.imshow(image2d, cmap='gray')
+        plt.axis('off')
+        plt.savefig(savepath_base + dataset_name + '_' + patname + '_image.png', bbox_inches='tight', pad_inches = 0, dpi=100)
+        plt.close()
+
+        plt.figure(figsize=[20,20])                        
+        plt.imshow(label2d, cmap='gray')
+        plt.axis('off')
+        plt.savefig(savepath_base + dataset_name + '_' + patname + '_label.png', bbox_inches='tight', pad_inches = 0, dpi=100)
+        plt.close()
