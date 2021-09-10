@@ -12,13 +12,6 @@ import utils_data
 import model as model
 import config.system_paths as sys_config
 
-import data.data_hcp as data_hcp
-import data.data_abide as data_abide
-import data.data_nci as data_nci
-import data.data_promise as data_promise
-import data.data_pirad_erc as data_pirad_erc
-import data.data_mnms as data_mnms
-
 # ==================================================================
 # Set the config file of the experiment you want to run here:
 # ==================================================================

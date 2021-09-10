@@ -5,6 +5,7 @@ import data.data_promise as data_promise
 import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
 import data.data_wmh as data_wmh
+import data.data_scgm as data_scgm
 import logging
 import config.system_paths as sys_config
 import numpy as np
@@ -177,6 +178,32 @@ def load_training_data(train_dataset,
         imvl = data_brain_lesions['images_validation']
         gtvl = data_brain_lesions['labels_validation']
         orig_data_siz_z_val = data_brain_lesions['nz_validation'][:]
+        num_val_subjects = orig_data_siz_z_val.shape[0] 
+
+    elif train_dataset in ['site1', 'site2', 'site3', 'site4']:
+        data_gm = data_scgm.load_and_maybe_process_data(sys_config.orig_data_root_scgm,
+                                                        sys_config.preproc_folder_scgm,
+                                                        image_size,
+                                                        target_resolution,
+                                                        force_overwrite=False,
+                                                        sub_dataset = train_dataset,
+                                                        cv_fold_number = cv_fold_num)
+
+        imtr = data_gm['images_train']
+        gttr = data_gm['labels_train']
+        
+        orig_data_res_x = data_gm['px_train'][:]
+        orig_data_res_y = data_gm['py_train'][:]
+        orig_data_res_z = data_gm['pz_train'][:]
+        orig_data_siz_x = data_gm['nx_train'][:]
+        orig_data_siz_y = data_gm['ny_train'][:]
+        orig_data_siz_z = data_gm['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+        imvl = data_gm['images_validation']
+        gtvl = data_gm['labels_validation']
+        orig_data_siz_z_val = data_gm['nz_validation'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0] 
 
     # ================================================================

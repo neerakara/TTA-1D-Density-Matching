@@ -4,11 +4,11 @@ import tensorflow as tf
 # ======================================================================
 # train settings
 # ======================================================================
-train_dataset = 'UMC' # CALTECH / HCPT2 / HCPT1 | BMC / RUNMC / UCL / HK / BIDMC / USZ | CSF / UHE / HVHD | UMC / NUHS
+train_dataset = 'site2' # CALTECH / HCPT2 / HCPT1 | BMC / RUNMC / UCL / HK / BIDMC / USZ | CSF / UHE / HVHD | UMC / NUHS | site1 / site2 / site3 / site4
 run_number = 1
 cv_num = 1
 tr_str = 'tr' + train_dataset
-if train_dataset == 'UMC':
+if train_dataset in ['UMC', 'NUHS', 'site1', 'site2', 'site3', 'site4']:
     run_str = '_cv' + str(cv_num) + '_r' + str(run_number) + '/'
 else:
     run_str = '_r' + str(run_number) + '/'
@@ -33,7 +33,12 @@ model_handle_i2l = model_zoo.unet2D_i2l
 # data settings
 # ======================================================================
 data_mode = '2D'
-image_size = (256, 256)
+
+if train_dataset in ['site1', 'site2', 'site3', 'site4']:
+    image_size = (200, 200)
+else:
+    image_size = (256, 256)
+
 image_depth_hcp = 256
 image_depth_caltech = 256
 image_depth_ixi = 256
@@ -42,6 +47,7 @@ nlabels_brain = 15
 nlabels_prostate = 3
 nlabels_cardiac = 4
 nlabels_wmh = 2
+nlabels_scgm = 3
 loss_type = 'dice'
 
 # ======================================================================
@@ -84,6 +90,14 @@ elif train_dataset in ['UMC', 'NUHS']:
     nlabels = nlabels_wmh
     target_resolution = (1.0, 1.0)
     image_depth = 48
+    downsampling_factor_x = 1
+    downsampling_factor_y = 1
+    downsampling_factor_z = 1
+
+elif train_dataset in ['site1', 'site2', 'site3', 'site4']:
+    nlabels = nlabels_scgm
+    target_resolution = (0.25, 0.25)
+    image_depth = 16
     downsampling_factor_x = 1
     downsampling_factor_y = 1
     downsampling_factor_z = 1
