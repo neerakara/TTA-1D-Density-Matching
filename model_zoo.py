@@ -5,6 +5,72 @@ import tensorflow as tf
 from tfwrapper import layers
 
 # ======================================================================
+# normalization network
+# ======================================================================
+def net2D_i2i(images, exp_config, training, scope_reuse=False):
+        
+    with tf.variable_scope('image_normalizer') as scope:
+        
+        if scope_reuse:
+            scope.reuse_variables()       
+                
+        num_layers = exp_config.norm_num_hidden_layers
+        n1 = exp_config.norm_num_filters_per_layer
+        k = exp_config.norm_kernel_size
+        
+        out = images
+        
+        for l in range(num_layers):
+            out = tf.layers.conv2d(inputs=out,
+                                   filters=n1,
+                                   kernel_size=k,
+                                   padding='SAME',
+                                   name='norm_conv1_'+str(l+1),
+                                   use_bias=True,
+                                   activation=None)
+            
+            if exp_config.norm_batch_norm is True:
+                out = tf.layers.batch_normalization(inputs=out, name = 'norm_conv1_' + str(l+1) + '_bn', training = training)
+            
+            if exp_config.norm_activation is 'elu':
+                out = tf.nn.elu(out)
+                
+            elif exp_config.norm_activation is 'relu':
+                out = tf.nn.relu(out)
+                
+            elif exp_config.norm_activation is 'rbf':            
+                # ==================
+                # fixed scale
+                # ==================
+                # scale = 0.2
+                # ==================
+                # learnable scale - one scale per layer
+                # ==================
+                # scale = tf.Variable(initial_value = 0.2, name = 'scale_'+str(l+1))
+                # ==================
+                # learnable scale - one scale activation unit
+                # ==================
+                # init_value = tf.random_normal([1,1,1,n1], mean=0.2, stddev=0.05)
+                # scale = tf.Variable(initial_value = init_value, name = 'scale_'+str(l+1))
+                scale = tf.get_variable(name = 'scale_'+str(l+1), shape=[1,1,1,n1])
+                out = tf.exp(-(out**2) / (scale**2))
+        
+        delta = tf.layers.conv2d(inputs=out,
+                                  filters=1,
+                                  kernel_size=k,
+                                  padding='SAME',
+                                  name='norm_conv1_'+str(num_layers+1),
+                                  use_bias=True,
+                                  activation=tf.identity)
+        
+        # =========================
+        # Only model an additive residual effect with the normalizer
+        # =========================
+        output = images + delta
+        
+    return output, delta
+
+# ======================================================================
 # 2D Unet for mapping from images to segmentation labels
 # ======================================================================
 def unet2D_i2l(images, nlabels, training_pl, scope_reuse=False): 
@@ -81,14 +147,14 @@ def unet2D_i2l(images, nlabels, training_pl, scope_reuse=False):
     return pred_logits
 
 # ======================================================================
-# 2D autoencoder self supervised task
+# 2D autoencoder self supervised AUTOENCODER
 # ======================================================================
 def self_sup_autoencoder(inputs, training_pl): 
 
     n0 = 16
     n1, n2, n3, n4, n5 = 1*n0, 2*n0, 4*n0, 8*n0, 16*n0
     
-    with tf.variable_scope('self_sup'):
+    with tf.variable_scope('self_sup_ae'):
         
         # ====================================
         # 1st Conv block - two conv layers, followed by max-pooling
@@ -160,7 +226,7 @@ def self_sup_autoencoder(inputs, training_pl):
     return outputs
 
 # ======================================================================
-# 2D autoencoder self supervised task
+# 2D autoencoder self supervised VARIATIONAL AUTOENCODER
 # ======================================================================
 def self_sup_variational_autoencoder(inputs, training_pl): 
 
@@ -247,80 +313,9 @@ def self_sup_variational_autoencoder(inputs, training_pl):
     return outputs, z_mu, z_std
 
 # ======================================================================
-# normalization network
-# ======================================================================
-def net2D_i2i(images,
-              exp_config,
-              training,
-              scope_reuse=False):
-        
-    with tf.variable_scope('image_normalizer') as scope:
-        
-        if scope_reuse:
-            scope.reuse_variables()       
-                
-        num_layers = exp_config.norm_num_hidden_layers
-        n1 = exp_config.norm_num_filters_per_layer
-        k = exp_config.norm_kernel_size
-        
-        out = images
-        
-        for l in range(num_layers):
-            out = tf.layers.conv2d(inputs=out,
-                                   filters=n1,
-                                   kernel_size=k,
-                                   padding='SAME',
-                                   name='norm_conv1_'+str(l+1),
-                                   use_bias=True,
-                                   activation=None)
-            
-            if exp_config.norm_batch_norm is True:
-                out = tf.layers.batch_normalization(inputs=out, name = 'norm_conv1_' + str(l+1) + '_bn', training = training)
-            
-            if exp_config.norm_activation is 'elu':
-                out = tf.nn.elu(out)
-                
-            elif exp_config.norm_activation is 'relu':
-                out = tf.nn.relu(out)
-                
-            elif exp_config.norm_activation is 'rbf':            
-                # ==================
-                # fixed scale
-                # ==================
-                # scale = 0.2
-                # ==================
-                # learnable scale - one scale per layer
-                # ==================
-                # scale = tf.Variable(initial_value = 0.2, name = 'scale_'+str(l+1))
-                # ==================
-                # learnable scale - one scale activation unit
-                # ==================
-                # init_value = tf.random_normal([1,1,1,n1], mean=0.2, stddev=0.05)
-                # scale = tf.Variable(initial_value = init_value, name = 'scale_'+str(l+1))
-                scale = tf.get_variable(name = 'scale_'+str(l+1), shape=[1,1,1,n1])
-                out = tf.exp(-(out**2) / (scale**2))
-        
-        delta = tf.layers.conv2d(inputs=out,
-                                  filters=1,
-                                  kernel_size=k,
-                                  padding='SAME',
-                                  name='norm_conv1_'+str(num_layers+1),
-                                  use_bias=True,
-                                  activation=tf.identity)
-        
-        # =========================
-        # Only model an additive residual effect with the normalizer
-        # =========================
-        output = images + delta
-        
-    return output, delta
-
-# ======================================================================
 # 3D Unet for label autoencoder
 # ======================================================================
-def dae3D(inputs,
-          nlabels,
-          training_pl): 
+def self_sup_denoising_autoencoder_3D(inputs, nlabels, training_pl): 
 
     n0 = 16
     n1, n2, n3, n4 = 1*n0, 2*n0, 4*n0, 8*n0

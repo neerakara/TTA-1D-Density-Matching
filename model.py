@@ -44,12 +44,12 @@ def predict_dae(inputs,
 
 # ================================================================
 # ================================================================
-def predict_self_sup_ae(inputs,
-                        exp_config,
-                        training_pl):
+def autoencode(inputs,
+               exp_config,
+               training_pl):
 
-    recon = exp_config.model_handle_self_sup(inputs,
-                                             training_pl = training_pl)
+    recon = exp_config.model_handle_self_sup_ae(inputs,
+                                                training_pl = training_pl)
     
     return recon
 
@@ -59,8 +59,8 @@ def predict_self_sup_vae(inputs,
                          exp_config,
                          training_pl):
 
-    recon, latent_mu, latent_std = exp_config.model_handle_self_sup(inputs,
-                                                                    training_pl = training_pl)
+    recon, latent_mu, latent_std = exp_config.model_handle_self_sup_vae(inputs,
+                                                                        training_pl = training_pl)
     
     return recon, latent_mu, latent_std
 
@@ -276,8 +276,9 @@ def evaluation_dae(clean_labels,
 
 # ================================================================
 # ================================================================
-def evaluation_self_sup_ae(recons,
-                           images):
+def evaluate_ae(images,
+                images_norm,
+                images_norm_recon):
     
     # =================
     # write some images to tensorboard
@@ -286,14 +287,19 @@ def evaluation_self_sup_ae(recons,
     img2 = prepare_tensor_for_summary(images, mode='image', n_idx_batch=1)
     img3 = prepare_tensor_for_summary(images, mode='image', n_idx_batch=2)
 
-    rec1 = prepare_tensor_for_summary(recons, mode='image', n_idx_batch=0)
-    rec2 = prepare_tensor_for_summary(recons, mode='image', n_idx_batch=1)
-    rec3 = prepare_tensor_for_summary(recons, mode='image', n_idx_batch=2)
-    
-    tf.summary.image('example_recons', tf.concat([rec1, rec2, rec3], axis=0))
-    tf.summary.image('example_images', tf.concat([img1, img2, img3], axis=0))
+    img_norm1 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=0)
+    img_norm2 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=1)
+    img_norm3 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=2)
 
-    return tf.reduce_mean(tf.square(recons - images))
+    img_norm_rec1 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=0)
+    img_norm_rec2 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=1)
+    img_norm_rec3 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=2)
+    
+    tf.summary.image('images', tf.concat([img1, img2, img3], axis=0))
+    tf.summary.image('images_normalized', tf.concat([img_norm1, img_norm2, img_norm3], axis=0))
+    tf.summary.image('images_normalized_recon', tf.concat([img_norm_rec1, img_norm_rec2, img_norm_rec3], axis=0))
+
+    return tf.reduce_mean(tf.square(images_norm_recon - images_norm))
 
 # ================================================================
 # ================================================================

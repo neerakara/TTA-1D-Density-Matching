@@ -16,6 +16,13 @@ norm_batch_norm = False
 # ====================================================
 model_handle_i2l = model_zoo.unet2D_i2l
 
+# ====================================================
+# self-supervised helper networks
+# ====================================================
+model_handle_self_sup_ae = model_zoo.self_sup_autoencoder
+model_handle_self_sup_vae = model_zoo.self_sup_variational_autoencoder
+model_handle_self_sup_dae = model_zoo.self_sup_denoising_autoencoder_3D
+
 # ======================================================================
 # training settings
 # ======================================================================
@@ -32,8 +39,9 @@ debug = False
 # ======================================================================
 max_steps = 30001
 max_steps_tl = 5001
+max_steps_ae = 25001
 train_eval_frequency = 1000
-val_eval_frequency = 1000
+val_eval_frequency = 1000   
 save_frequency = 1000
 summary_writing_frequency = 100
 
