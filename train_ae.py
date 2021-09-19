@@ -46,6 +46,9 @@ parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | C
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
+# Which features to autoencode
+parser.add_argument('--ae_features', default = "xn") # xn | y
+
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16)
 
@@ -106,7 +109,7 @@ log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 # dir for AE
 exp_str = 'tta/AE/r' + str(args.ae_runnum) + '/'
 log_dir_ae = log_dir + exp_str
-tensorboard_dir_ae = sys_config.tensorboard_root + expname_i2l + exp_str
+tensorboard_dir_ae = sys_config.tensorboard_root + expname_i2l + exp_str + args.ae_features + '/'
 
 logging.info('SD training directory: %s' %log_dir)
 logging.info('AE training directory: %s' %log_dir_ae)
@@ -114,7 +117,7 @@ logging.info('Tensorboard directory for AE training: %s' %tensorboard_dir_ae)
 
 if not tf.gfile.Exists(log_dir_ae):
     tf.gfile.MakeDirs(log_dir_ae)
-    tf.gfile.MakeDirs(log_dir_ae + 'models/')
+    tf.gfile.MakeDirs(log_dir_ae + 'models_' + args.ae_features + '/')
     tf.gfile.MakeDirs(tensorboard_dir_ae)
 
 # ================================================================
@@ -145,16 +148,45 @@ with tf.Graph().as_default():
     # ======================
     logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
 
-    # ======================
-    # autoencoder on the space of normalized images
-    # LATER: Add autoencoders at multiple feature levels
-    # ======================
-    images_normalized_autoencoded = model.autoencode(images_normalized, exp_config, training_pl)
-    
     logging.info('shape of input images: ' + str(images_pl.shape)) # (batch_size, 256, 256, 1)
-    logging.info('shape of normalized images: ' + str(images_normalized.shape)) # (batch_size, 256, 256, 1)
-    logging.info('shape of autoencoded normalized images: ' + str(images_normalized_autoencoded.shape)) # (batch_size, 256, 256, 1)
     logging.info('shape of segmentation logits: ' + str(logits.shape)) # (batch_size, 256, 256, nlabels)
+
+    # ======================
+    # define AEs
+    # ======================
+    if args.ae_features == 'xn':
+        
+        # ======================
+        # autoencoder on the space of normalized images
+        # ======================
+        images_normalized_autoencoded = model.autoencode(images_normalized, exp_config, training_pl, args.ae_features)
+        logging.info('shape of normalized images: ' + str(images_normalized.shape)) # (batch_size, 256, 256, 1)
+        logging.info('shape of autoencoded normalized images: ' + str(images_normalized_autoencoded.shape)) # (batch_size, 256, 256, 1)
+        
+        # ======================
+        # AE loss
+        # ======================
+        loss_op = tf.reduce_mean(tf.math.square(images_normalized_autoencoded - images_normalized))
+    
+    elif args.ae_features == 'y':
+        
+        # ======================
+        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # ======================
+        softmax_autoencoded = model.autoencode(softmax, exp_config, training_pl, args.ae_features)
+        logging.info('shape of AE input: ' + str(softmax.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE output: ' + str(softmax_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+
+        # ======================
+        # AE loss
+        # ======================
+        loss_op = tf.reduce_mean(tf.math.square(softmax_autoencoded - softmax))
+    
+    # ======================
+    # Add losses to tensorboard
+    # ======================
+    tf.summary.scalar('loss/AE', loss_op)         
+    summary_during_ae_training = tf.summary.merge_all()
 
     # ======================
     # Divide the vars into normalization, segmentation and autoencoder networks
@@ -176,7 +208,7 @@ with tf.Graph().as_default():
         elif 'self_sup_ae' in var_name:
             ae_vars.append(v)
 
-    debug_print_varnames = False
+    debug_print_varnames = True
     if debug_print_varnames == True:
         logging.info('=========== Norm vars')
         for v in norm_vars: logging.info(v.name)
@@ -186,18 +218,7 @@ with tf.Graph().as_default():
         for v in ae_vars: logging.info(v.name)
         logging.info('=========== All vars')
         for v in all_vars: logging.info(v.name)
-
-    # ======================
-    # AE loss
-    # ======================
-    loss_op = tf.reduce_mean(tf.math.square(images_normalized_autoencoded - images_normalized))
-            
-    # ======================
-    # Add losses to tensorboard
-    # ======================
-    tf.summary.scalar('loss/AE', loss_op)         
-    summary_during_ae_training = tf.summary.merge_all()
-    
+                
     # ======================
     # Add optimization ops.
     # ======================
@@ -212,9 +233,10 @@ with tf.Graph().as_default():
     # Model evaluation
     # ======================
     print('creating eval op...')
-    eval_loss = model.evaluate_ae(images_pl,
-                                  images_normalized,
-                                  images_normalized_autoencoded)
+    if args.ae_features == 'xn':
+        eval_loss = model.evaluate_ae(images_normalized, images_normalized_autoencoded)
+    elif args.ae_features == 'y':
+        eval_loss = model.evaluate_ae(softmax, softmax_autoencoded)
 
     # ======================
     # build the summary Tensor based on the TF collection of Summaries.
@@ -350,7 +372,7 @@ with tf.Graph().as_default():
         # Save a checkpoint periodically
         # ===========================
         if step % exp_config.save_frequency == 0:
-            checkpoint_file = os.path.join(log_dir_ae, 'models/model.ckpt')
+            checkpoint_file = os.path.join(log_dir_ae, 'models_' + args.ae_features + '/model.ckpt')
             saver.save(sess, checkpoint_file, global_step=step)
 
         # ===========================
@@ -372,7 +394,7 @@ with tf.Graph().as_default():
             # ===========================
             if val_loss < best_loss:
                 best_loss = val_loss
-                best_file = os.path.join(log_dir_ae, 'models/best_loss.ckpt')
+                best_file = os.path.join(log_dir_ae, 'models_' + args.ae_features + '/best_loss.ckpt')
                 saver_best.save(sess, best_file, global_step=step)
                 logging.info('Found new average best loss on the validation set! - %f -  Saving model.' % val_loss)
 

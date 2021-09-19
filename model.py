@@ -46,10 +46,12 @@ def predict_dae(inputs,
 # ================================================================
 def autoencode(inputs,
                exp_config,
-               training_pl):
+               training_pl,
+               ae_features):
 
     recon = exp_config.model_handle_self_sup_ae(inputs,
-                                                training_pl = training_pl)
+                                                training_pl = training_pl,
+                                                ae_features = ae_features)
     
     return recon
 
@@ -276,30 +278,30 @@ def evaluation_dae(clean_labels,
 
 # ================================================================
 # ================================================================
-def evaluate_ae(images,
-                images_norm,
-                images_norm_recon):
+def evaluate_ae(ae_input, ae_output):
     
+    if ae_input.shape[-1] != 1:
+        ae_input_vis = tf.expand_dims(ae_input[:,:,:,1], axis=-1)
+        ae_output_vis = tf.expand_dims(ae_output[:,:,:,1], axis=-1)
+    else:
+        ae_input_vis = ae_input
+        ae_output_vis = ae_output
+
     # =================
     # write some images to tensorboard
     # =================
-    img1 = prepare_tensor_for_summary(images, mode='image', n_idx_batch=0)
-    img2 = prepare_tensor_for_summary(images, mode='image', n_idx_batch=1)
-    img3 = prepare_tensor_for_summary(images, mode='image', n_idx_batch=2)
+    in1 = prepare_tensor_for_summary(ae_input_vis, mode='image', n_idx_batch=0)
+    in2 = prepare_tensor_for_summary(ae_input_vis, mode='image', n_idx_batch=1)
+    in3 = prepare_tensor_for_summary(ae_input_vis, mode='image', n_idx_batch=2)
 
-    img_norm1 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=0)
-    img_norm2 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=1)
-    img_norm3 = prepare_tensor_for_summary(images_norm, mode='image', n_idx_batch=2)
-
-    img_norm_rec1 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=0)
-    img_norm_rec2 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=1)
-    img_norm_rec3 = prepare_tensor_for_summary(images_norm_recon, mode='image', n_idx_batch=2)
+    out1 = prepare_tensor_for_summary(ae_output_vis, mode='image', n_idx_batch=0)
+    out2 = prepare_tensor_for_summary(ae_output_vis, mode='image', n_idx_batch=1)
+    out3 = prepare_tensor_for_summary(ae_output_vis, mode='image', n_idx_batch=2)
     
-    tf.summary.image('images', tf.concat([img1, img2, img3], axis=0))
-    tf.summary.image('images_normalized', tf.concat([img_norm1, img_norm2, img_norm3], axis=0))
-    tf.summary.image('images_normalized_recon', tf.concat([img_norm_rec1, img_norm_rec2, img_norm_rec3], axis=0))
+    tf.summary.image('ae_inputs', tf.concat([in1, in2, in3], axis=0))
+    tf.summary.image('ae_outputs', tf.concat([out1, out2, out3], axis=0))
 
-    return tf.reduce_mean(tf.square(images_norm_recon - images_norm))
+    return tf.reduce_mean(tf.square(ae_output - ae_input))
 
 # ================================================================
 # ================================================================

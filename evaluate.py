@@ -36,7 +36,7 @@ parser.add_argument('--tl_runnum', type = int, default = 1) # 1 / 2 / 3
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
-parser.add_argument('--tta_method', default = "entropy_min") # FoE / entropy_min
+parser.add_argument('--tta_method', default = "entropy_min") # FoE / entropy_min / AE
 parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA # Whether to use Gaussians / KDEs
 parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0 # If KDEs, what smoothing parameter
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM # Which vars to adapt?
