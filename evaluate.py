@@ -20,22 +20,26 @@ import argparse
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "site2") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset 
-parser.add_argument('--test_dataset', default = "site2") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site1, site2, site3, site4
+parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site1, site2, site3, site4
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2 / 3 / 4
-parser.add_argument('--NORMALIZE', type = int, default = 0) # 1 / 0
+parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
+
+# TRANSFER LEARNING OPTIONS
+parser.add_argument('--TRANSFER', type = int, default = 0) # 1 / 0
+parser.add_argument('--TL_STRING', default = "tl/") # TL base string
+parser.add_argument('--TL_VARS', default = "ALL") # BN / NORM / ALL # Which vars to adapt?
+parser.add_argument('--tl_runnum', type = int, default = 1) # 1 / 2 / 3
 
 # TTA options
 parser.add_argument('--tta_string', default = "tta/")
-# Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
-# If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
-# Which vars to adapt?
-parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
+parser.add_argument('--tta_method', default = "entropy_min") # FoE / entropy_min
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA # Whether to use Gaussians / KDEs
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0 # If KDEs, what smoothing parameter
+parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM # Which vars to adapt?
 
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
@@ -45,18 +49,17 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
-# Matching settings
-parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4
+parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4 # Matching settings
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16)
-# (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 4
+# (for cardiac and spine, this needs to set to 8 as volumes there contain less than 16 slices)
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
@@ -87,8 +90,12 @@ else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
+if args.TRANSFER == 1:
+    exp_str = exp_config.make_tl_exp_name(args)
+    log_dir_tl = log_dir_sd + exp_str
+
 if args.NORMALIZE == 1:
-    exp_str = exp_config.make_tta_exp_name(args)
+    exp_str = exp_config.make_tta_exp_name(args, tta_method = args.tta_method)
     log_dir_tta = log_dir_sd + exp_str
     logging.info(log_dir_tta)
 
@@ -176,7 +183,10 @@ def predict_segmentation(subject_name,
         # Restore the segmentation network parameters
         # ================================================================
         logging.info('============================================================')   
-        path_to_model = log_dir_sd + 'models/'
+        if args.TRANSFER == 0:
+            path_to_model = log_dir_sd + 'models/'
+        elif args.TRANSFER == 1:
+            path_to_model = log_dir_tl + 'models/'
         checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_dice.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_i2l.restore(sess, checkpoint_path)
@@ -288,9 +298,14 @@ def main():
             tf.gfile.MakeDirs(log_dir_tta + 'results/')
         results_filename = log_dir_tta + 'results/' + test_dataset_name + '_test'
     else:
-        if not tf.gfile.Exists(log_dir_sd + 'results/'):
-            tf.gfile.MakeDirs(log_dir_sd + 'results/')
-        results_filename = log_dir_sd + 'results/' + test_dataset_name + '_test'
+        if args.TRANSFER == 0:
+            if not tf.gfile.Exists(log_dir_sd + 'results/'):
+                tf.gfile.MakeDirs(log_dir_sd + 'results/')
+            results_filename = log_dir_sd + 'results/' + test_dataset_name + '_test'
+        elif args.TRANSFER == 1:
+            if not tf.gfile.Exists(log_dir_tl + 'results/'):
+                tf.gfile.MakeDirs(log_dir_tl + 'results/')
+            results_filename = log_dir_tl + 'results/' + test_dataset_name + '_test'
     
     results_filename = results_filename + '_cv' + str(args.test_cv_fold_num)
 
@@ -372,7 +387,10 @@ def main():
         if args.NORMALIZE == 1:
             savepath = log_dir_tta + 'results/' + test_dataset_name + '_test_' + subject_name
         else:
-            savepath = log_dir_sd + 'results/' + test_dataset_name + '_test_' + subject_name
+            if args.TRANSFER == 0:
+                savepath = log_dir_sd + 'results/' + test_dataset_name + '_test_' + subject_name
+            elif args.TRANSFER == 1:
+                savepath = log_dir_tl + 'results/' + test_dataset_name + '_test_' + subject_name
 
         # ==================================================================
         # If only whole-gland comparisions are desired, merge the labels in both ground truth segmentations as well as the predictions

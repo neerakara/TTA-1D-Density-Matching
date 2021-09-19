@@ -209,7 +209,7 @@ def load_training_data(train_dataset,
     # ================================================================
     # HCP T1 / T2
     # ================================================================
-    elif train_dataset == 'HCPT1' or train_dataset == 'HCPT2':
+    elif train_dataset in ['HCPT1', 'HCPT2']:
 
         logging.info('Reading ' + str(train_dataset) +  ' images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
@@ -249,7 +249,7 @@ def load_training_data(train_dataset,
         orig_data_siz_z_val = data_brain_val['nz'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0]
                 
-    elif train_dataset is 'CALTECH':
+    elif train_dataset in ['CALTECH']:
         logging.info('Reading CALTECH images...')    
         logging.info('Data root directory: ' + sys_config.orig_data_root_abide + 'CALTECH/')      
         data_brain_train = data_abide.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_abide,

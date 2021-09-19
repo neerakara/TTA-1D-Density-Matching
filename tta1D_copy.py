@@ -45,19 +45,17 @@ import config.system_paths as sys_config
 # ==================================================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
-logging.info("File start running...")
-
 # ==================================================================
 # parse arguments
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "site2") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
+parser.add_argument('--test_dataset', default = "site1") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
 
@@ -66,9 +64,9 @@ parser.add_argument('--tta_string', default = "tta/")
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / EM1 / EM2
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
@@ -83,12 +81,12 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16)
-# (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 8 / 16
+parser.add_argument('--b_size', type = int, default = 2)
+# (for cardiac and spine, this needs to set to 8 as some volumes there contain less than 16 slices)
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
@@ -150,7 +148,7 @@ subject_name = str(name_test_subjects[sub_num])[2:-1]
 logging.info(subject_name)
 
 # dir where the SD mdoels have been saved
-if args.train_dataset == 'UMC':
+if args.train_dataset in ['UMC', 'site2']:
     expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
@@ -523,7 +521,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # add init ops
         # ================================================================
         init_ops = tf.global_variables_initializer()
-        init_tta_ops = tf.initialize_variables(tta_vars) # set TTA vars to random values
+        # init_tta_ops = tf.initialize_variables(tta_vars) # set TTA vars to random values
                 
         # ================================================================
         # create session
@@ -557,8 +555,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # create saver
         # ================================================================
         saver_i2l = tf.train.Saver(var_list = i2l_vars)
-        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=10)   
-        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=3)   
+        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1)   
+        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1) 
                 
         # ================================================================
         # freeze the graph before execution

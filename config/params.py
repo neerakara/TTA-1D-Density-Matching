@@ -256,40 +256,50 @@ def get_dataset_dependent_params(train_dataset,
 # ================================================================
 # Function to make the name for the experiment run according to TTA parameters
 # ================================================================
-def make_tta_exp_name(args):
+def make_tta_exp_name(args, tta_method = 'FoE'):
     
-    exp_str = args.tta_string + args.PDF_TYPE # Gaussian / KDE / KDE_PCA
-    
-    # loss function
-    if args.PDF_TYPE == 'KDE' or args.PDF_TYPE == 'KDE_PCA':
-        exp_str = exp_str + '/Alpha' + str(args.KDE_ALPHA) # If KDE is used, what's the smoothness parameter?
-    
-    exp_str = exp_str + '/' + args.LOSS_TYPE # KL / 
-
-    if args.LOSS_TYPE == 'KL':
-        if args.KL_ORDER == 'TD_vs_SD':
-            exp_str = exp_str + '_' + args.KL_ORDER
-        elif args.KL_ORDER == 'SD_vs_TD': # default
-            exp_str = exp_str
-
-    if args.PCA_LAMBDA > 0.0:
-        exp_str = exp_str + '/' + make_pca_dir_name(args)[:-1] + '_lambda' + str(args.PCA_LAMBDA)
-
-    # optimization details
-    exp_str = exp_str + '/Vars' + args.TTA_VARS 
-    exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
-    exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
-    exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
-    
-    # Matching with mean over SD subjects or taking expectation wrt SD subjects
-    exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) 
-    
-    # learning rate parameters
-    exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
-    exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
-    exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
+    if tta_method == 'FoE':
+        exp_str = args.tta_string + args.PDF_TYPE # Gaussian / KDE / KDE_PCA
         
-    exp_str = exp_str + '/'
+        # loss function
+        if args.PDF_TYPE == 'KDE' or args.PDF_TYPE == 'KDE_PCA':
+            exp_str = exp_str + '/Alpha' + str(args.KDE_ALPHA) # If KDE is used, what's the smoothness parameter?
+        
+        exp_str = exp_str + '/' + args.LOSS_TYPE # KL / 
+
+        if args.LOSS_TYPE == 'KL':
+            if args.KL_ORDER == 'TD_vs_SD':
+                exp_str = exp_str + '_' + args.KL_ORDER
+            elif args.KL_ORDER == 'SD_vs_TD': # default
+                exp_str = exp_str
+
+        if args.PCA_LAMBDA > 0.0:
+            exp_str = exp_str + '/' + make_pca_dir_name(args)[:-1] + '_lambda' + str(args.PCA_LAMBDA)
+
+        # optimization details
+        exp_str = exp_str + '/Vars' + args.TTA_VARS 
+        exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
+        exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
+        exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
+        
+        # Matching with mean over SD subjects or taking expectation wrt SD subjects
+        exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) 
+        
+        # learning rate parameters
+        exp_str = exp_str + '/LR' + str(args.tta_learning_rate) # TTA Learning Rate
+        exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+        exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
+            
+        exp_str = exp_str + '/'
+
+    elif tta_method == 'entropy_min':
+        exp_str = args.tta_string + 'EntropyMin/'
+        exp_str = exp_str + '/Vars' + args.TTA_VARS 
+        exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
+        exp_str = exp_str + '_LR' + str(args.tta_learning_rate) # TTA Learning Rate
+        exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+        exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
+        exp_str = exp_str + '/'
 
     return exp_str
 

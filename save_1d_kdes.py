@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC / CSF / UMC / HCPT1
+parser.add_argument('--train_dataset', default = "site2") # RUNMC / CSF / UMC / HCPT1 / site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Batch settings
@@ -62,7 +62,7 @@ orig_data_siz_z = loaded_training_data[7]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-if args.train_dataset == 'UMC':
+if args.train_dataset in ['UMC', 'site2']:
     expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'

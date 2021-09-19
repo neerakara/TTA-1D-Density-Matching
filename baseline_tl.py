@@ -24,11 +24,11 @@ import argparse
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
+parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # Batch settings
@@ -49,6 +49,9 @@ args = parser.parse_args()
 # ================================================================
 # set dataset dependent hyperparameters
 # ================================================================
+logging.info('TRANSFER LEARNING')
+logging.info('SD: ' + str(args.train_dataset))
+logging.info('TD: ' + str(args.test_dataset))
 dataset_params = exp_config.get_dataset_dependent_params(args.train_dataset, args.test_dataset) 
 image_size = dataset_params[0]
 nlabels = dataset_params[1]
@@ -218,9 +221,9 @@ def run_transfer():
         # ================================================================
         # create saver
         # ================================================================
-        saver = tf.train.Saver(var_list = i2l_vars, max_to_keep=3)
-        saver_tl = tf.train.Saver(var_list = tl_vars, max_to_keep=3)
-        saver_tl_best = tf.train.Saver(var_list = tl_vars, max_to_keep=3)
+        saver = tf.train.Saver(var_list = i2l_vars, max_to_keep=1)
+        saver_tl = tf.train.Saver(var_list = tl_vars, max_to_keep=1)
+        saver_tl_best = tf.train.Saver(var_list = tl_vars, max_to_keep=1)
         
         # ================================================================
         # create session
