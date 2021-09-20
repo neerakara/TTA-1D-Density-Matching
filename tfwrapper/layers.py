@@ -325,3 +325,18 @@ def bilinear_upsample3D_(x,
         output_tensor = tf.transpose(resume_b_z, [0, 3, 2, 1, 4])
 
     return output_tensor
+
+# ======================================================================
+# INSTANCE NORMALIZATION
+# INPUT: X (bs, nx, ny, nz)
+# https://stackoverflow.com/questions/45463778/instance-normalisation-vs-batch-normalisation
+# https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/nn/moments.md
+# ======================================================================
+def instance_normalize(x):
+
+    mu, var = tf.nn.moments(x, axes=[1,2], keep_dims = True)
+    logging.info(mu.shape)
+    logging.info(var.shape)
+    x_norm = (x - mu) / (tf.math.sqrt(var + 0.001))
+
+    return x_norm

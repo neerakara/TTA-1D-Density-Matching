@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import logging
 
 ## ======================================================================
 ## ======================================================================
@@ -113,4 +114,73 @@ def pixel_wise_cross_entropy_loss_using_probs(predicted_probabilities, labels):
     # compute cross-entropy 
     loss = - tf.reduce_mean(tf.reduce_sum(predicted_probabilities * tf.math.log(labels_copy), axis=-1))    
     
+    return loss
+
+## ======================================================================
+# SPECTRAL NORM REGULARIZATION (PYTORCH IMPLEMENTATION)
+# INTRODUCED IN https://github.com/VITA-Group/Orthogonality-in-CNNs/blob/master/SVHN/train.py
+# USED in https://github.com/YufanHe/self-domain-adapted-network/blob/b68ed003729b10e311d46ad2438c8eb4a93da535/utils/util.py
+## ======================================================================
+# def l2_reg_ortho(mdl):
+# 	l2_reg = None
+# 	for W in mdl.parameters():
+# 		if W.ndimension() < 2:
+# 			continue
+# 		else:   
+# 			cols = W[0].numel()
+# 			rows = W.shape[0]
+# 			w1 = W.view(-1,cols)
+# 			wt = torch.transpose(w1,0,1)
+# 			m  = torch.matmul(wt,w1)
+# 			ident = Variable(torch.eye(cols,cols))
+# 			ident = ident.cuda()
+
+# 			w_tmp = (m - ident)
+# 			height = w_tmp.size(0)
+# 			u = normalize(w_tmp.new_empty(height).normal_(0,1), dim=0, eps=1e-12)
+# 			v = normalize(torch.matmul(w_tmp.t(), u), dim=0, eps=1e-12)
+# 			u = normalize(torch.matmul(w_tmp, v), dim=0, eps=1e-12)
+# 			sigma = torch.dot(u, torch.matmul(w_tmp, v))
+
+# 			if l2_reg is None:
+# 				l2_reg = (sigma)**2
+# 			else:
+# 				l2_reg = l2_reg + (sigma)**2
+# 	return l2_reg
+
+## ======================================================================
+# TENSORFLOW IMPLEMENTATION
+## ======================================================================
+def spectral_norm(w):
+
+    # input : w : square matrix whose spectral norm is to be computed
+
+    # compute (w_transpose*w - I) OPTION A
+    # w_ = tf.linalg.matmul(tf.transpose(w), w) - tf.eye(tf.shape(w)[0])
+    
+    # compute (w_transpose*w - I) OPTION B
+    cols = tf.shape(w)[0]*tf.shape(w)[1]
+    w1 = tf.reshape(w, [-1, cols])
+    wt = tf.transpose(w1)
+    m = tf.linalg.matmul(wt, w1)
+    w_ = m - tf.eye(cols)
+
+    # u = normalize(w_tmp.new_empty(height).normal_(0,1), dim=0, eps=1e-12)
+    u_ = tf.random.normal([tf.shape(w_)[0], 1], 0.0, 1.0, dtype=tf.float32)
+    u = u_ / tf.math.maximum(tf.norm(u_[:,0], ord=2), 1e-5)
+
+    # v = normalize(torch.matmul(w_tmp.t(), u), dim=0, eps=1e-12)
+    v_ = tf.linalg.matmul(tf.transpose(w_), u)
+    v = v_ / tf.math.maximum(tf.norm(v_[:,0], ord=2), 1e-5)
+
+    # u = normalize(torch.matmul(w_tmp, v), dim=0, eps=1e-12)
+    u_ = tf.linalg.matmul(w_, v)
+    u = u_ / tf.math.maximum(tf.norm(u_[:,0], ord=2), 1e-5)
+
+    # sigma = torch.dot(u, torch.matmul(w_tmp, v))
+    sigma = tf.reduce_sum(tf.multiply(u, tf.linalg.matmul(w_, v)))
+    
+    # l2_reg = (sigma)**2
+    loss = (sigma)**2
+
     return loss

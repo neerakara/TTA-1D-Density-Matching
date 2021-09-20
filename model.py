@@ -29,6 +29,26 @@ def predict_i2l(images,
 
 # ================================================================
 # ================================================================
+def predict_i2l_with_adaptors(images,
+                              exp_config,
+                              training_pl,
+                              nlabels,
+                              scope_reuse = False):
+    '''
+    Similar to predict_i2l, but defines adaptors at different feature levels, that can be adapted for each test image
+    '''
+
+    logits = exp_config.model_handle_i2l_with_adaptors(images,
+                                                       nlabels = nlabels,
+                                                       training_pl = training_pl)
+    
+    softmax = tf.nn.softmax(logits)
+    mask = tf.argmax(softmax, axis=-1)
+
+    return logits, softmax, mask
+
+# ================================================================
+# ================================================================
 def predict_dae(inputs,
                 exp_config,
                 training_pl):
@@ -79,7 +99,17 @@ def normalize(images,
                                                                            scope_reuse = scope_reuse)
     
     return images_normalized, added_residual
-    
+
+def adapt_Ax(images, exp_config):
+
+    return exp_config.model_handle_adaptorAx(images)
+
+# ================================================================
+# ================================================================
+def spectral_loss(w):
+
+    return losses.spectral_norm(w[0,0,:,:])
+
 # ================================================================
 # ================================================================
 def loss(logits,
