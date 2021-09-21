@@ -132,6 +132,31 @@ def conv2D_layer_bn(x,
     return act
 
 ## ======================================================================
+# conv layer with instance normalization: convolution, followed by instance norm, followed by activation
+## ======================================================================
+def conv2D_layer_in(x,
+                    name,
+                    training,
+                    kernel_size=3,
+                    num_filters=32,
+                    strides=1,
+                    activation=tf.nn.relu,
+                    padding="SAME"):
+
+    conv = tf.layers.conv2d(inputs=x,
+                            filters=num_filters,
+                            kernel_size=kernel_size,
+                            padding=padding,
+                            name=name,
+                            use_bias=False)    
+    
+    conv_in = instance_normalize(conv, name = name + '_in')
+    
+    act = activation(conv_in)
+
+    return act
+
+## ======================================================================
 # deconv layer with adaptive batch normalization: convolution, followed by batch norm, followed by activation
 ## ======================================================================
 def deconv2D_layer_bn(x,
@@ -332,11 +357,10 @@ def bilinear_upsample3D_(x,
 # https://stackoverflow.com/questions/45463778/instance-normalisation-vs-batch-normalisation
 # https://github.com/tensorflow/docs/blob/r1.12/site/en/api_docs/python/tf/nn/moments.md
 # ======================================================================
-def instance_normalize(x):
+def instance_normalize(x, name = 'unnamed'):
 
-    mu, var = tf.nn.moments(x, axes=[1,2], keep_dims = True)
-    logging.info(mu.shape)
-    logging.info(var.shape)
-    x_norm = (x - mu) / (tf.math.sqrt(var + 0.001))
+    with tf.variable_scope(name):
+        mu, var = tf.nn.moments(x, axes=[1,2], keep_dims = True)
+        x_norm = (x - mu) / (tf.math.sqrt(var + 1e-5))
 
     return x_norm

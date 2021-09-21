@@ -46,19 +46,30 @@ def predict_i2l_with_adaptors(images,
                               exp_config,
                               training_pl,
                               nlabels,
-                              scope_reuse = False):
+                              scope_reuse = False,
+                              return_features = False):
     '''
     Similar to predict_i2l, but defines adaptors at different feature levels, that can be adapted for each test image
     '''
 
-    logits = exp_config.model_handle_i2l_with_adaptors(images,
-                                                       nlabels = nlabels,
-                                                       training_pl = training_pl)
+    if return_features == False:
+        logits = exp_config.model_handle_i2l_with_adaptors(images,
+                                                           nlabels = nlabels,
+                                                           training_pl = training_pl,
+                                                           return_features = return_features)
+    else:
+        logits, feat1, feat2, feat3 = exp_config.model_handle_i2l_with_adaptors(images,
+                                                                                nlabels = nlabels,
+                                                                                training_pl = training_pl,
+                                                                                return_features = return_features)
     
     softmax = tf.nn.softmax(logits)
     mask = tf.argmax(softmax, axis=-1)
 
-    return logits, softmax, mask
+    if return_features == False:
+        return logits, softmax, mask
+    else:
+        return logits, softmax, mask, feat1, feat2, feat3
 
 # ================================================================
 # ================================================================
@@ -113,6 +124,8 @@ def normalize(images,
     
     return images_normalized, added_residual
 
+# ================================================================
+# ================================================================
 def adapt_Ax(images, exp_config):
 
     return exp_config.model_handle_adaptorAx(images)

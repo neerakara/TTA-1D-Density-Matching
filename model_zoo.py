@@ -52,7 +52,8 @@ def adaptor_Ax(images):
 # ======================================================================
 def unet2D_i2l_with_adaptors(images,
                              nlabels,
-                             training_pl): 
+                             training_pl,
+                             return_features=False):
 
     n0 = 16
     n1, n2, n3, n4 = 1*n0, 2*n0, 4*n0, 8*n0
@@ -149,7 +150,10 @@ def unet2D_i2l_with_adaptors(images,
         # ====================================
         pred_seg_soft = tf.nn.softmax(pred_logits, name='pred_seg_soft')
 
-    return pred_logits
+    if return_features == False:
+        return pred_logits
+    else:
+        return pred_logits, tf.concat([pool1_adapted, deconv2], axis=-1), tf.concat([pool2_adapted, deconv3], axis=-1), tf.concat([pool3_adapted, conv4_2], axis=-1)
 
 # ======================================================================
 # normalization network
@@ -377,6 +381,58 @@ def self_sup_autoencoder(inputs, training_pl, ae_features = 'xn'):
         # Final conv layer - without batch normalization or activation
         # ====================================
         outputs = layers.conv2D_layer(x=conv9_2, name='output_layer', num_filters=num_output_channels, kernel_size=1)
+
+    return outputs
+
+# ======================================================================
+# 2D autoencoder self supervised AUTOENCODER
+# ======================================================================
+def self_sup_autoencoder_like_yufan(inputs, training_pl, ae_features = 'xn'): 
+
+    num_output_channels = inputs.shape[-1]
+
+    # They use lower number of channels as the spatial dimensionality increases.
+    # Not sure what is the idea behind this, but following the same architecture.
+    if ae_features in ['xn', 'y']:
+        n_channels = [32, 16, 8]
+    elif ae_features in ['f1', 'f2', 'f3']:
+        n_channels = [64, 32, 16]
+    
+    with tf.variable_scope('self_sup_ae_' + ae_features):
+        
+        # ====================================
+        # 1st Conv layer, followed by instance normalization, followed by max-pooling
+        # ====================================
+        conv1 = layers.conv2D_layer_in(x=inputs, name='conv1', num_filters=n_channels[0], training=training_pl)
+        pool1 = layers.max_pool_layer2d(conv1)
+    
+        # ====================================
+        # 2nd Conv layer, followed by instance normalization, followed by max-pooling
+        # ====================================
+        conv2 = layers.conv2D_layer_in(x=pool1, name='conv2', num_filters=n_channels[1], training=training_pl)
+        pool2 = layers.max_pool_layer2d(conv2)
+    
+        # ====================================
+        # 3rd Conv layer, followed by instance normalization
+        # ====================================
+        conv3 = layers.conv2D_layer_in(x=pool2, name='conv3', num_filters=n_channels[2], training=training_pl)
+            
+        # ====================================
+        # Upsampling via bilinear upsampling, followed by 1 conv layer, followed by instance normalization
+        # ====================================
+        upsample1 = layers.bilinear_upsample2D(conv3, size = (tf.shape(conv2)[1], tf.shape(conv2)[2]), name='upsample1')
+        conv4 = layers.conv2D_layer_in(x=upsample1, name='conv4', num_filters=n_channels[1], training=training_pl)
+
+        # ====================================
+        # Upsampling via bilinear upsampling, followed by 1 conv layer, followed by instance normalization
+        # ====================================
+        upsample2 = layers.bilinear_upsample2D(conv4, size = (tf.shape(conv1)[1], tf.shape(conv1)[2]), name='upsample2')
+        conv5 = layers.conv2D_layer_in(x=upsample2, name='conv5', num_filters=n_channels[0], training=training_pl)
+                    
+        # ====================================
+        # Final conv layer - without normalization or activation
+        # ====================================
+        outputs = layers.conv2D_layer(x=conv5, name='output_layer', num_filters=num_output_channels, kernel_size=1)
 
     return outputs
 

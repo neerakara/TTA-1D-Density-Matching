@@ -47,7 +47,7 @@ parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # Which features to autoencode
-parser.add_argument('--ae_features', default = "f2") # xn | y | f1 | f2 | f3
+parser.add_argument('--ae_features', default = "xn") # xn | y | f1 | f2 | f3
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16)
@@ -107,7 +107,7 @@ else:
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # dir for AE
-exp_str = 'tta/AE/r' + str(args.ae_runnum) + '/'
+exp_str = 'tta/AE/r' + str(args.ae_runnum) + '/YufanArch/'
 log_dir_ae = log_dir + exp_str
 tensorboard_dir_ae = sys_config.tensorboard_root + expname_i2l + exp_str + args.ae_features + '/'
 
@@ -191,6 +191,11 @@ with tf.Graph().as_default():
                                                args.ae_features)
         logging.info('shape of AE input: ' + str(softmax.shape)) # (batch_size, 256, 256, num_classes)
         logging.info('shape of AE output: ' + str(softmax_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+
+        # ======================
+        # AE loss
+        # ======================
+        loss_op = tf.reduce_mean(tf.math.square(softmax_autoencoded - softmax))
 
     elif args.ae_features == 'f1':
         

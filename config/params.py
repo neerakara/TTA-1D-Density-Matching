@@ -19,7 +19,7 @@ model_handle_i2l = model_zoo.unet2D_i2l
 # ====================================================
 # self-supervised helper networks
 # ====================================================
-model_handle_self_sup_ae = model_zoo.self_sup_autoencoder
+model_handle_self_sup_ae = model_zoo.self_sup_autoencoder_like_yufan # model_zoo.self_sup_autoencoder
 model_handle_self_sup_vae = model_zoo.self_sup_variational_autoencoder
 model_handle_self_sup_dae = model_zoo.self_sup_denoising_autoencoder_3D
 model_handle_adaptorAx = model_zoo.adaptor_Ax

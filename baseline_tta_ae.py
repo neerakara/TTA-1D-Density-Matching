@@ -60,7 +60,7 @@ parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # BN / NORM / AdaptAx / AdaptAxAf
 # which AEs
-parser.add_argument('--whichAEs', default = "xn_and_y") # xn / xn_and_y
+parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 8)
@@ -196,13 +196,20 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # Build the graph that computes predictions from the inference model
         # ================================================================
-        logits, softmax, preds = model.predict_i2l_with_adaptors(images_normalized, exp_config, training_pl = tf.constant(False, dtype=tf.bool), nlabels = nlabels)
+        logits, softmax, preds, features_level1, features_level2, features_level3 = model.predict_i2l_with_adaptors(images_normalized,
+                                                                                                                    exp_config,
+                                                                                                                    training_pl = tf.constant(False, dtype=tf.bool),
+                                                                                                                    nlabels = nlabels,
+                                                                                                                    return_features = True)
 
         # ======================
         # autoencoder on the space of normalized images and on the softmax outputs
         # ======================
         images_normalized_autoencoded = model.autoencode(images_normalized, exp_config, tf.constant(False, dtype=tf.bool), 'xn')
         softmax_autoencoded = model.autoencode(softmax, exp_config, tf.constant(False, dtype=tf.bool), 'y')
+        features_level1_autoencoded = model.autoencode(features_level1, exp_config, tf.constant(False, dtype=tf.bool), 'f1')
+        features_level2_autoencoded = model.autoencode(features_level2, exp_config, tf.constant(False, dtype=tf.bool), 'f2')
+        features_level3_autoencoded = model.autoencode(features_level3, exp_config, tf.constant(False, dtype=tf.bool), 'f3')
         
         # ================================================================
         # Divide the vars into segmentation network and normalization network
@@ -212,6 +219,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         bn_vars = []
         ae_xn_vars = []
         ae_y_vars = []
+        ae_f1_vars = []
+        ae_f2_vars = []
+        ae_f3_vars = []
         adapt_ax_vars = []
         adapt_af_vars = []
         for v in tf.global_variables():
@@ -227,6 +237,12 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 ae_xn_vars.append(v)
             if 'self_sup_ae_y' in var_name:
                 ae_y_vars.append(v)
+            if 'self_sup_ae_f1' in var_name:
+                ae_f1_vars.append(v)
+            if 'self_sup_ae_f2' in var_name:
+                ae_f2_vars.append(v)
+            if 'self_sup_ae_f3' in var_name:
+                ae_f3_vars.append(v)
             if 'adaptAx' in var_name:
                 adapt_ax_vars.append(v)
             if 'adaptAf' in var_name:
@@ -276,10 +292,16 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         loss_op_xn = tf.reduce_mean(tf.math.square(images_normalized_autoencoded - images_normalized))
         loss_op_y = tf.reduce_mean(tf.math.square(softmax_autoencoded - softmax))
+        loss_op_f1 = tf.reduce_mean(tf.math.square(features_level1_autoencoded - features_level1))
+        loss_op_f2 = tf.reduce_mean(tf.math.square(features_level2_autoencoded - features_level2))
+        loss_op_f3 = tf.reduce_mean(tf.math.square(features_level3_autoencoded - features_level3))
+        
         if args.whichAEs == 'xn':
             loss_ae_op = loss_op_xn
         elif args.whichAEs == 'xn_and_y':
             loss_ae_op = loss_op_xn + loss_op_y
+        elif args.whichAEs == 'xn_f1_f2_f3_y':
+            loss_ae_op = loss_op_xn + loss_op_y + loss_op_f1 + loss_op_f2 + loss_op_f3
 
         # ================================================================
         # TTA loss - spectral norm of the feature adaptors
@@ -309,6 +331,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         tf.summary.scalar('loss/TTA__AE_total', loss_ae_op)
         tf.summary.scalar('loss/TTA__XN_', loss_op_xn)
         tf.summary.scalar('loss/TTA__Y_', loss_op_y)
+        tf.summary.scalar('loss/TTA__F1_', loss_op_f1)
+        tf.summary.scalar('loss/TTA__F2_', loss_op_f2)
+        tf.summary.scalar('loss/TTA__F3_', loss_op_f3)
         tf.summary.scalar('loss/TTA_spectral_norm', loss_spectral_norm_op)
         summary_during_tta = tf.summary.merge_all()
 
@@ -383,6 +408,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         saver_i2l = tf.train.Saver(var_list = i2l_vars)
         saver_ae_xn = tf.train.Saver(var_list = ae_xn_vars)
         saver_ae_y = tf.train.Saver(var_list = ae_y_vars)
+        saver_ae_f1 = tf.train.Saver(var_list = ae_f1_vars)
+        saver_ae_f2 = tf.train.Saver(var_list = ae_f2_vars)
+        saver_ae_f3 = tf.train.Saver(var_list = ae_f3_vars)
         saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1)   
         saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1)
                 
@@ -430,6 +458,33 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_y.restore(sess, checkpoint_path)
+
+        # ================================================================
+        # Restore the autoencoder (F1) parameters
+        # ================================================================
+        logging.info('============================================================')   
+        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f1/'
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
+        saver_ae_f1.restore(sess, checkpoint_path)
+
+        # ================================================================
+        # Restore the autoencoder (F2) parameters
+        # ================================================================
+        logging.info('============================================================')   
+        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f2/'
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
+        saver_ae_f2.restore(sess, checkpoint_path)
+
+        # ================================================================
+        # Restore the autoencoder (F1) parameters
+        # ================================================================
+        logging.info('============================================================')   
+        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f3/'
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
+        saver_ae_f3.restore(sess, checkpoint_path)
 
         # ===================================
         # TTA / SFDA iterations
