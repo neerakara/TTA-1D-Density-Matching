@@ -153,34 +153,24 @@ def pixel_wise_cross_entropy_loss_using_probs(predicted_probabilities, labels):
 ## ======================================================================
 def spectral_norm(w):
 
-    # input : w : square matrix whose spectral norm is to be computed
+    # input : w : weight matrix whose spectral norm is to be computed
 
-    # compute (w_transpose*w - I) OPTION A
-    # w_ = tf.linalg.matmul(tf.transpose(w), w) - tf.eye(tf.shape(w)[0])
-    
-    # compute (w_transpose*w - I) OPTION B
-    cols = tf.shape(w)[0]*tf.shape(w)[1]
-    w1 = tf.reshape(w, [-1, cols])
-    wt = tf.transpose(w1)
-    m = tf.linalg.matmul(wt, w1)
-    w_ = m - tf.eye(cols)
+    # compute (w_transpose*w - I)
+    w_ = tf.linalg.matmul(tf.transpose(w), w) - tf.eye(tf.shape(w)[0])
 
-    # u = normalize(w_tmp.new_empty(height).normal_(0,1), dim=0, eps=1e-12)
     u_ = tf.random.normal([tf.shape(w_)[0], 1], 0.0, 1.0, dtype=tf.float32)
-    u = u_ / tf.math.maximum(tf.norm(u_[:,0], ord=2), 1e-5)
+    u = u_ / tf.math.maximum(tf.norm(u_), 1e-12)
 
-    # v = normalize(torch.matmul(w_tmp.t(), u), dim=0, eps=1e-12)
     v_ = tf.linalg.matmul(tf.transpose(w_), u)
-    v = v_ / tf.math.maximum(tf.norm(v_[:,0], ord=2), 1e-5)
+    v_norm = tf.sqrt(tf.reduce_sum(tf.square(tf.squeeze(v_))) + 1e-9) # using tf.norm gives NaNs, if the sum of squares is very close to zero, apparently.
+    v = v_ / tf.math.maximum(v_norm, 1e-12)
 
-    # u = normalize(torch.matmul(w_tmp, v), dim=0, eps=1e-12)
     u_ = tf.linalg.matmul(w_, v)
-    u = u_ / tf.math.maximum(tf.norm(u_[:,0], ord=2), 1e-5)
+    u_norm = tf.sqrt(tf.reduce_sum(tf.square(tf.squeeze(u_))) + 1e-9)
+    u = u_ / tf.math.maximum(u_norm, 1e-12)
 
-    # sigma = torch.dot(u, torch.matmul(w_tmp, v))
     sigma = tf.reduce_sum(tf.multiply(u, tf.linalg.matmul(w_, v)))
     
-    # l2_reg = (sigma)**2
     loss = (sigma)**2
 
     return loss

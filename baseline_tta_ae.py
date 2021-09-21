@@ -51,7 +51,7 @@ parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
 parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
+parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
 
 # TTA base string
 parser.add_argument('--tta_string', default = "tta/")
@@ -77,7 +77,7 @@ parser.add_argument('--accum_gradients', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_max_steps', type = int, default = 30) # 0 / 1
 
 # weight of spectral norm loss compared to the AE recon loss
-parser.add_argument('--lambda_spectral', type = float, default = 0.01) # 1.0 / 5.0
+parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
 
 # parse arguments
 args = parser.parse_args()
