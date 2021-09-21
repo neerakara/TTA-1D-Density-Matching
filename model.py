@@ -9,7 +9,8 @@ def predict_i2l(images,
                 exp_config,
                 training_pl,
                 nlabels,
-                scope_reuse = False):
+                scope_reuse = False,
+                return_features = False):
     '''
     Returns the prediction for an image given a network from the model zoo
     :param images: An input image tensor
@@ -17,15 +18,27 @@ def predict_i2l(images,
     :return: A prediction mask, and the corresponding softmax output
     '''
 
-    logits = exp_config.model_handle_i2l(images,
-                                         nlabels = nlabels,
-                                         training_pl = training_pl,
-                                         scope_reuse = scope_reuse)
+    if return_features == False:
+        logits = exp_config.model_handle_i2l(images,
+                                             nlabels = nlabels,
+                                             training_pl = training_pl,
+                                             scope_reuse = scope_reuse,
+                                             return_features = return_features)
+
+    else:
+        logits, feat1, feat2, feat3 = exp_config.model_handle_i2l(images,
+                                                                  nlabels = nlabels,
+                                                                  training_pl = training_pl,
+                                                                  scope_reuse = scope_reuse,
+                                                                  return_features = return_features)
     
     softmax = tf.nn.softmax(logits)
     mask = tf.argmax(softmax, axis=-1)
 
-    return logits, softmax, mask
+    if return_features == False:
+        return logits, softmax, mask
+    else:
+        return logits, softmax, mask, feat1, feat2, feat3
 
 # ================================================================
 # ================================================================

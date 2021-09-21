@@ -47,7 +47,7 @@ parser.add_argument('--tr_run_number', type = int, default = 1) # 1 /
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # Which features to autoencode
-parser.add_argument('--ae_features', default = "xn") # xn | y
+parser.add_argument('--ae_features', default = "f2") # xn | y | f1 | f2 | f3
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 16)
@@ -141,15 +141,24 @@ with tf.Graph().as_default():
     # ======================
     # normalization module
     # ======================
-    images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = training_pl)
+    images_normalized, added_residual = model.normalize(images_pl,
+                                                        exp_config,
+                                                        training_pl = training_pl)
     
     # ======================
     # segmentation network
     # ======================
-    logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
+    logits, softmax, preds, features_level1, features_level2, features_level3 = model.predict_i2l(images_normalized,
+                                                                                                  exp_config,
+                                                                                                  training_pl = training_pl,
+                                                                                                  nlabels = nlabels,
+                                                                                                  return_features = True)
 
     logging.info('shape of input images: ' + str(images_pl.shape)) # (batch_size, 256, 256, 1)
     logging.info('shape of segmentation logits: ' + str(logits.shape)) # (batch_size, 256, 256, nlabels)
+    logging.info('shape of features_level1: ' + str(features_level1.shape)) # (batch_size, 256, 256, nlabels)
+    logging.info('shape of features_level2: ' + str(features_level2.shape)) # (batch_size, 256, 256, nlabels)
+    logging.info('shape of features_level3: ' + str(features_level3.shape)) # (batch_size, 256, 256, nlabels)
 
     # ======================
     # define AEs
@@ -159,7 +168,10 @@ with tf.Graph().as_default():
         # ======================
         # autoencoder on the space of normalized images
         # ======================
-        images_normalized_autoencoded = model.autoencode(images_normalized, exp_config, training_pl, args.ae_features)
+        images_normalized_autoencoded = model.autoencode(images_normalized,
+                                                         exp_config,
+                                                         training_pl,
+                                                         args.ae_features)
         logging.info('shape of normalized images: ' + str(images_normalized.shape)) # (batch_size, 256, 256, 1)
         logging.info('shape of autoencoded normalized images: ' + str(images_normalized_autoencoded.shape)) # (batch_size, 256, 256, 1)
         
@@ -173,14 +185,63 @@ with tf.Graph().as_default():
         # ======================
         # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
         # ======================
-        softmax_autoencoded = model.autoencode(softmax, exp_config, training_pl, args.ae_features)
+        softmax_autoencoded = model.autoencode(softmax,
+                                               exp_config,
+                                               training_pl,
+                                               args.ae_features)
         logging.info('shape of AE input: ' + str(softmax.shape)) # (batch_size, 256, 256, num_classes)
         logging.info('shape of AE output: ' + str(softmax_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+
+    elif args.ae_features == 'f1':
+        
+        # ======================
+        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # ======================
+        features_level1_autoencoded = model.autoencode(features_level1,
+                                                       exp_config,
+                                                       training_pl,
+                                                       args.ae_features)
+        logging.info('shape of AE input: ' + str(features_level1.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE output: ' + str(features_level1_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
 
         # ======================
         # AE loss
         # ======================
-        loss_op = tf.reduce_mean(tf.math.square(softmax_autoencoded - softmax))
+        loss_op = tf.reduce_mean(tf.math.square(features_level1_autoencoded - features_level1))
+
+    elif args.ae_features == 'f2':
+        
+        # ======================
+        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # ======================
+        features_level2_autoencoded = model.autoencode(features_level2,
+                                                       exp_config,
+                                                       training_pl,
+                                                       args.ae_features)
+        logging.info('shape of AE input: ' + str(features_level2.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE output: ' + str(features_level2_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+
+        # ======================
+        # AE loss
+        # ======================
+        loss_op = tf.reduce_mean(tf.math.square(features_level2_autoencoded - features_level2))
+
+    elif args.ae_features == 'f3':
+        
+        # ======================
+        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # ======================
+        features_level3_autoencoded = model.autoencode(features_level3,
+                                                       exp_config,
+                                                       training_pl,
+                                                       args.ae_features)
+        logging.info('shape of AE input: ' + str(features_level3.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE output: ' + str(features_level3_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+
+        # ======================
+        # AE loss
+        # ======================
+        loss_op = tf.reduce_mean(tf.math.square(features_level3_autoencoded - features_level3))
     
     # ======================
     # Add losses to tensorboard
@@ -237,6 +298,12 @@ with tf.Graph().as_default():
         eval_loss = model.evaluate_ae(images_normalized, images_normalized_autoencoded)
     elif args.ae_features == 'y':
         eval_loss = model.evaluate_ae(softmax, softmax_autoencoded)
+    elif args.ae_features == 'f1':
+        eval_loss = model.evaluate_ae(features_level1, features_level1_autoencoded)
+    elif args.ae_features == 'f2':
+        eval_loss = model.evaluate_ae(features_level2, features_level2_autoencoded)
+    elif args.ae_features == 'f3':
+        eval_loss = model.evaluate_ae(features_level3, features_level3_autoencoded)
 
     # ======================
     # build the summary Tensor based on the TF collection of Summaries.

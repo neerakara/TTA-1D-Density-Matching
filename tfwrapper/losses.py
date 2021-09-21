@@ -149,7 +149,7 @@ def pixel_wise_cross_entropy_loss_using_probs(predicted_probabilities, labels):
 # 	return l2_reg
 
 ## ======================================================================
-# TENSORFLOW IMPLEMENTATION
+# TENSORFLOW IMPLEMENTATION of Spectral Norm Regularization
 ## ======================================================================
 def spectral_norm(w):
 
@@ -158,19 +158,24 @@ def spectral_norm(w):
     # compute (w_transpose*w - I)
     w_ = tf.linalg.matmul(tf.transpose(w), w) - tf.eye(tf.shape(w)[0])
 
+    # sample a random vector u
     u_ = tf.random.normal([tf.shape(w_)[0], 1], 0.0, 1.0, dtype=tf.float32)
+    # normalize
     u = u_ / tf.math.maximum(tf.norm(u_), 1e-12)
 
+    # updates according to eqn 7 of https://arxiv.org/abs/1810.09102
     v_ = tf.linalg.matmul(tf.transpose(w_), u)
     v_norm = tf.sqrt(tf.reduce_sum(tf.square(tf.squeeze(v_))) + 1e-9) # using tf.norm gives NaNs, if the sum of squares is very close to zero, apparently.
     v = v_ / tf.math.maximum(v_norm, 1e-12)
 
+    # updates according to eqn 7 of https://arxiv.org/abs/1810.09102
     u_ = tf.linalg.matmul(w_, v)
     u_norm = tf.sqrt(tf.reduce_sum(tf.square(tf.squeeze(u_))) + 1e-9)
     u = u_ / tf.math.maximum(u_norm, 1e-12)
 
+    # now,  the spectral norm of w can be approximated as follows according https://arxiv.org/abs/1810.09102
+    # not sure how this approximation is derived though..
     sigma = tf.reduce_sum(tf.multiply(u, tf.linalg.matmul(w_, v)))
-    
     loss = (sigma)**2
 
     return loss

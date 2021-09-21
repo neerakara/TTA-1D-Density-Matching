@@ -11,11 +11,8 @@ def adaptor_Ax(images):
         
     with tf.variable_scope('adaptAx') as scope:
                                 
-        # default init is 'glorot_uniform' (https://stackoverflow.com/questions/43284047/what-is-the-default-kernel-initializer-in-tf-layers-conv2d-and-tf-layers-dense)
+        # default TF init is 'glorot_uniform' (https://stackoverflow.com/questions/43284047/what-is-the-default-kernel-initializer-in-tf-layers-conv2d-and-tf-layers-dense)
         # Yufan He MedIA 2021 use He Normal initializer (https://www.tensorflow.org/api_docs/python/tf/keras/initializers/HeNormal)
-        # adapt_f1 = tf.layers.conv2d(inputs=images, filters=64, kernel_size=1, padding='SAME', name='Axconv1', use_bias=False, activation=tf.identity, kernel_initializer = tf.initializers.random_normal(mean=1.0/1.0, stddev=tf.math.sqrt(2.0 / 1.0)))
-        # adapt_f2 = tf.layers.conv2d(inputs=adapt_f1, filters=64, kernel_size=1, padding='SAME', name='Axconv2', use_bias=False, activation=tf.identity, kernel_initializer = tf.initializers.random_normal(mean=1.0/64.0, stddev=tf.math.sqrt(2.0 / 64.0)))
-        # adapt_output = tf.layers.conv2d(inputs=adapt_f2, filters=1, kernel_size=1, padding='SAME', name='Axconv3', use_bias=False, activation=tf.identity, kernel_initializer = tf.initializers.random_normal(mean=1.0/64.0, stddev=tf.math.sqrt(2.0 / 64.0)))
 
         adapt_f1 = tf.layers.conv2d(inputs=images,
                                     filters=64,
@@ -24,8 +21,8 @@ def adaptor_Ax(images):
                                     name='Axconv1',
                                     use_bias=True,
                                     activation=tf.identity,
-                                    kernel_initializer = tf.initializers.random_normal(mean=1.0/1.0, stddev=tf.math.sqrt(2.0 / 1.0)))
-        # adapt_f1 = layers.instance_normalize(adapt_f1)
+                                    kernel_initializer = tf.initializers.random_normal(mean=1.0/1.0, stddev=tf.math.sqrt(2.0 / 1.0))) # initializing with mean weights around 1 to have close to an identity mapping at the start of TTA
+        # adapt_f1 = layers.instance_normalize(adapt_f1) # using IN leads to very poor performance at the start of TTA. and the AE loss cannot pull the performance up from there.
         adapt_f1 = tf.nn.leaky_relu(adapt_f1)
         
         adapt_f2 = tf.layers.conv2d(inputs=adapt_f1,
@@ -51,7 +48,7 @@ def adaptor_Ax(images):
     return adapt_output
 
 # ======================================================================
-# For TTA-AE (He MedIA 2021)
+# For TTA-AE (Yufan He, MedIA 2021)
 # ======================================================================
 def unet2D_i2l_with_adaptors(images,
                              nlabels,
@@ -74,6 +71,8 @@ def unet2D_i2l_with_adaptors(images,
     with tf.variable_scope('adaptAf') as scope:
         pool1_adapted = tf.layers.conv2d(inputs=pool1, filters=n1, kernel_size=1, padding='SAME', name='A1', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        # These weights will be initialized to identity mappings in the TTA file.
+        # Can't figure out how to do this directly here..
 
     # ====================================
     # 2nd Conv block
@@ -89,6 +88,8 @@ def unet2D_i2l_with_adaptors(images,
     with tf.variable_scope('adaptAf') as scope:
         pool2_adapted = tf.layers.conv2d(inputs=pool2, filters=n2, kernel_size=1, padding='SAME', name='A2', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        # These weights will be initialized to identity mappings in the TTA file.
+        # Can't figure out how to do this directly here..
 
     # ====================================
     # 3rd Conv block
@@ -99,11 +100,13 @@ def unet2D_i2l_with_adaptors(images,
         pool3 = layers.max_pool_layer2d(conv3_1)
 
     # ====================================
-    # Feature adaptor 2
+    # Feature adaptor 3
     # ====================================
     with tf.variable_scope('adaptAf') as scope:
         pool3_adapted = tf.layers.conv2d(inputs=pool3, filters=n3, kernel_size=1, padding='SAME', name='A3', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        # These weights will be initialized to identity mappings in the TTA file.
+        # Can't figure out how to do this directly here..
     
     # ====================================
     # 4th Conv block and decoder blocks
@@ -217,7 +220,11 @@ def net2D_i2i(images, exp_config, training, scope_reuse=False):
 # ======================================================================
 # 2D Unet for mapping from images to segmentation labels
 # ======================================================================
-def unet2D_i2l(images, nlabels, training_pl, scope_reuse=False): 
+def unet2D_i2l(images,
+               nlabels,
+               training_pl,
+               scope_reuse=False,
+               return_features=False): 
 
     n0 = 16
     n1, n2, n3, n4 = 1*n0, 2*n0, 4*n0, 8*n0
@@ -288,7 +295,10 @@ def unet2D_i2l(images, nlabels, training_pl, scope_reuse=False):
         # ====================================
         pred_seg_soft = tf.nn.softmax(pred_logits, name='pred_seg_soft')
 
-    return pred_logits
+    if return_features == False:
+        return pred_logits
+    else:
+        return pred_logits, tf.concat([pool1, deconv2], axis=-1), tf.concat([pool2, deconv3], axis=-1), tf.concat([pool3, conv4_2], axis=-1)
 
 # ======================================================================
 # 2D autoencoder self supervised AUTOENCODER
