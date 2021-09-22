@@ -51,7 +51,7 @@ parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
 parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
+parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 
 # TTA base string
 parser.add_argument('--tta_string', default = "tta/")
@@ -63,10 +63,10 @@ parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # BN / NORM / AdaptAx /
 parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 8)
+parser.add_argument('--b_size', type = int, default = 1)
 
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.00001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 1e-5) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
@@ -74,10 +74,13 @@ parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 parser.add_argument('--accum_gradients', type = int, default = 0) # 0 / 1
 
 # Number of TTA steps
-parser.add_argument('--tta_max_steps', type = int, default = 30) # 0 / 1
+parser.add_argument('--tta_max_steps', type = int, default = 101) # 0 / 1
 
 # weight of spectral norm loss compared to the AE recon loss
 parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
+
+# whether to print debug stuff or not
+parser.add_argument('--debug', type = int, default = 0) # 1 / 0
 
 # parse arguments
 args = parser.parse_args()
@@ -248,15 +251,16 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             if 'adaptAf' in var_name:
                 adapt_af_vars.append(v)
 
-        logging.info("Ax vars")
-        for v in adapt_ax_vars:
-            logging.info(v.name)
-            logging.info(v.shape)
-        
-        logging.info("Af vars")
-        for v in adapt_af_vars:
-            logging.info(v.name)
-            logging.info(v.shape)
+        if args.debug == 1:
+            logging.info("Ax vars")
+            for v in adapt_ax_vars:
+                logging.info(v.name)
+                logging.info(v.shape)
+            
+            logging.info("Af vars")
+            for v in adapt_af_vars:
+                logging.info(v.name)
+                logging.info(v.shape)
 
         # ================================================================
         # ops for initializing feature adaptors to identity
@@ -264,10 +268,11 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         wf1 = [v for v in tf.global_variables() if v.name == "adaptAf/A1/kernel:0"][0]
         wf2 = [v for v in tf.global_variables() if v.name == "adaptAf/A2/kernel:0"][0]
         wf3 = [v for v in tf.global_variables() if v.name == "adaptAf/A3/kernel:0"][0]
-        logging.info("Weight matrices of feature adaptors.. ")
-        logging.info(wf1)
-        logging.info(wf2)
-        logging.info(wf3)
+        if args.debug == 1:
+            logging.info("Weight matrices of feature adaptors.. ")
+            logging.info(wf1)
+            logging.info(wf2)
+            logging.info(wf3)
         wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
         wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
         wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
@@ -372,6 +377,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # placeholder for logging a smoothened loss
         # ================================================================                        
+        loss_whole_subject_pl = tf.placeholder(tf.float32, shape = [], name = 'loss_whole_subject') # shape [1]
+        loss_whole_subject_summary = tf.summary.scalar('loss/TTA_whole_subject', loss_whole_subject_pl)
         loss_ema_pl = tf.placeholder(tf.float32, shape = [], name = 'loss_ema') # shape [1]
         loss_ema_summary = tf.summary.scalar('loss/TTA_EMA', loss_ema_pl)
 
@@ -406,13 +413,17 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # create saver
         # ================================================================
         saver_i2l = tf.train.Saver(var_list = i2l_vars)
+        # savers to restore ae models
         saver_ae_xn = tf.train.Saver(var_list = ae_xn_vars)
         saver_ae_y = tf.train.Saver(var_list = ae_y_vars)
         saver_ae_f1 = tf.train.Saver(var_list = ae_f1_vars)
         saver_ae_f2 = tf.train.Saver(var_list = ae_f2_vars)
         saver_ae_f3 = tf.train.Saver(var_list = ae_f3_vars)
-        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1)   
-        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1)
+        # tta savers (we need multiple of these to save according to different stopping criteria)
+        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # general saver after every few epochs
+        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves the weights when the exponential moving average of the loss is the lowest
+        saver_tta_best_first_ten_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 10 epochs 
+        saver_tta_sos = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves weights at the iteration when the loss increases as compared to the previous step
                 
         # ================================================================
         # freeze the graph before execution
@@ -427,15 +438,15 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
         sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
 
-        logging.info('Initialized wf values')   
-        logging.info(wf1.eval(session=sess))
-        logging.info(wf2.eval(session=sess))
-        logging.info(wf3.eval(session=sess))
+        if args.debug == 1:
+            logging.info('Initialized feature adaptors..')   
+            logging.info(wf1.eval(session=sess))
+            logging.info(wf2.eval(session=sess))
+            logging.info(wf3.eval(session=sess))
         
         # ================================================================
         # Restore the normalization + segmentation network parameters
         # ================================================================
-        logging.info('============================================================')   
         path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'models/'
         checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_dice.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
@@ -444,57 +455,95 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # Restore the autoencoder (Xn) parameters
         # ================================================================
-        logging.info('============================================================')   
-        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_xn/'
-        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        path_to_ae_models = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/YufanArch/models_'
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'xn/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_xn.restore(sess, checkpoint_path)
 
         # ================================================================
         # Restore the autoencoder (Y) parameters
         # ================================================================
-        logging.info('============================================================')   
-        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_y/'
-        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'y/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_y.restore(sess, checkpoint_path)
 
         # ================================================================
         # Restore the autoencoder (F1) parameters
         # ================================================================
-        logging.info('============================================================')   
-        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f1/'
-        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'f1/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_f1.restore(sess, checkpoint_path)
 
         # ================================================================
         # Restore the autoencoder (F2) parameters
         # ================================================================
-        logging.info('============================================================')   
-        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f2/'
-        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'f2/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_f2.restore(sess, checkpoint_path)
 
         # ================================================================
         # Restore the autoencoder (F1) parameters
         # ================================================================
-        logging.info('============================================================')   
-        path_to_model = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_f3/'
-        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+        checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'f3/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_f3.restore(sess, checkpoint_path)
+
+        # =============================
+        # compute TTA loss before any updates are done
+        # =============================
+        loss_iter_count = 0
+        loss_step_zero = 0.0
+        b_size = args.b_size
+        for b_i in range(0, test_image.shape[0], b_size):
+            if (b_i+1)*b_size > test_image.shape[0]:
+                continue
+            loss_step_zero = loss_step_zero + sess.run(loss_op, feed_dict = {images_pl: np.expand_dims(test_image[b_i*b_size:(b_i+1)*b_size, :, :], axis=-1)})
+            loss_iter_count += 1
+        loss_step_zero = loss_step_zero / loss_iter_count
+        best_loss = loss_step_zero
+        loss_ema = best_loss
+        loss_previous_step = best_loss
+
+        # ===========================
+        # compute dice wrt gt before any updates are done
+        # ===========================
+        label_predicted = []
+        for b_i in range(0, test_image.shape[0], b_size):
+            if b_i + b_size < test_image.shape[0]:
+                batch = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
+            else:
+                # pad zeros to have complete batches
+                extra_zeros_needed = b_i + b_size - test_image.shape[0]
+                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...],
+                                        np.zeros((extra_zeros_needed,
+                                                  test_image.shape[1],
+                                                  test_image.shape[2]))), axis=0), axis=-1)
+            label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
+        label_predicted = np.squeeze(np.array(label_predicted)).astype(float)  
+
+        if b_size > 1 and test_image.shape[0] > b_size:
+            label_predicted = np.reshape(label_predicted, (label_predicted.shape[0]*label_predicted.shape[1], label_predicted.shape[2], label_predicted.shape[3]))
+        label_predicted = label_predicted[:test_image.shape[0], ...]
+        if args.test_dataset in ['UCL', 'HK', 'BIDMC']:
+            label_predicted[label_predicted!=0.0] = 1.0
+        dice_wrt_gt = met.f1_score(test_image_gt.flatten(), label_predicted.flatten(), average=None) 
+        
+        # Record dice and TTA loss at step 0 (before adaptation)
+        summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice: np.mean(dice_wrt_gt[1:])}), 0)
+        summary_writer.add_summary(sess.run(loss_whole_subject_summary, feed_dict={loss_whole_subject_pl: loss_step_zero}), 0)
+        summary_writer.add_summary(sess.run(loss_ema_summary, feed_dict={loss_ema_pl: loss_ema}), 0)
+
+        # This will be set to True once a SOS model is saved, so that this model is not overwritten
+        model_sos_saved = False
 
         # ===================================
         # TTA / SFDA iterations
         # ===================================
-        step = 0
-        best_loss = 100000.0
+        step = 1
 
         while (step < tta_max_steps):
             
-            logging.info("TTA step: " + str(step+1))
+            logging.info("TTA step: " + str(step))
             
             # =============================
             # run accumulated_gradients_zero_op (no need to provide values for any placeholders)
@@ -502,7 +551,6 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             if args.accum_gradients == 1:    
                 sess.run(accumulated_gradients_zero_op)
             num_accumulation_steps = 0
-            loss_this_step = 0.0
 
             # =============================
             # Learning rate schedule
@@ -514,12 +562,10 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     tta_learning_rate = args.tta_learning_rate / 10.0
             elif args.tta_learning_sch == 0:
                 tta_learning_rate = args.tta_learning_rate
-                            
+
             # =============================
             # Adaptation iterations within this epoch
             # =============================
-            
-            b_size = args.b_size
             for b_i in range(0, test_image.shape[0], b_size):
 
                 feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1), lr_pl: tta_learning_rate}
@@ -532,8 +578,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     sess.run(train_op, feed_dict=feed_dict)
                     
                 num_accumulation_steps = num_accumulation_steps + 1
-                loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
-                loss_this_step = loss_this_step / num_accumulation_steps # average loss (over all slices of the image volume) in this step
+                # loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = feed_dict)
+                # loss_this_step = loss_this_step / num_accumulation_steps # average loss (over all slices of the image volume) in this step
 
             if args.accum_gradients == 1:    
                 # ===========================
@@ -545,21 +591,58 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 # But the returned gradient values will be replaced by the mean gradients.
                 sess.run(train_op, feed_dict = feed_dict)
 
+            # =============================
+            # compute TTA loss after this epoch's parameter updates
+            # =============================
+            loss_iter_count = 0
+            loss_this_step = 0.0
+            for b_i in range(0, test_image.shape[0], b_size):
+                if (b_i+1)*b_size > test_image.shape[0]:
+                    continue
+                loss_this_step = loss_this_step + sess.run(loss_op, feed_dict = {images_pl: np.expand_dims(test_image[b_i*b_size:(b_i+1)*b_size, :, :], axis=-1)})
+                loss_iter_count += 1
+            loss_this_step = loss_this_step / loss_iter_count
+            summary_writer.add_summary(sess.run(loss_whole_subject_summary, feed_dict={loss_whole_subject_pl: loss_this_step}), step)
+
             # ===========================
-            # save best model so far (based on an exponential moving average of the TTA loss)
+            # compute an exponential moving average of the TTA loss
             # ===========================
             momentum = 0.95
-            if step == 0:
-                loss_ema = loss_this_step
-            else:
-                loss_ema = momentum * loss_ema + (1 - momentum) * loss_this_step
+            loss_ema = momentum * loss_ema + (1 - momentum) * loss_this_step
             summary_writer.add_summary(sess.run(loss_ema_summary, feed_dict={loss_ema_pl: loss_ema}), step)
 
+            # ===========================
+            # save models according to different criteria
+            # ===========================
             if best_loss > loss_ema:
                 best_loss = loss_ema
                 best_file = os.path.join(log_dir_tta, 'models/best_loss.ckpt')
                 saver_tta_best.save(sess, best_file, global_step=step)
                 logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
+
+                # ===========================
+                # save the best model in the first ten iterations.
+                # ===========================
+                if step < 11:
+                    best_file = os.path.join(log_dir_tta, 'models/best_loss_in_first_10_epochs.ckpt')
+                    saver_tta_best_first_ten_epochs.save(sess, best_file, global_step=step)
+                    logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
+
+            # ===========================
+            # Save a 'sos' model if the average loss after the epoch is great than the average loss before the epoch
+            # ===========================
+            if loss_this_step > loss_previous_step and model_sos_saved == False:
+                best_file = os.path.join(log_dir_tta, 'models/best_loss_sos.ckpt')
+                saver_tta_sos.save(sess, best_file, global_step=step)
+                logging.info('Loss increased in step %d as compared to the previous step -  Saving model.' % (step))
+                model_sos_saved = True
+            loss_previous_step = loss_this_step
+
+            if step == 10 and model_sos_saved == False:
+                best_file = os.path.join(log_dir_tta, 'models/best_loss_sos.ckpt')
+                saver_tta_sos.save(sess, best_file, global_step=step)
+                logging.info('Loss continuously decreased for the first %d epochs, saving current model as the SOS model.' % (step))
+                model_sos_saved = True
 
             # ===========================
             # Periodically save models

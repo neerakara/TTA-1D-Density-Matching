@@ -22,7 +22,7 @@
 # ==================================================================
 
 # ==================================================================
-# import 
+# import  
 # ==================================================================
 import logging
 import os.path
@@ -45,19 +45,17 @@ import config.system_paths as sys_config
 # ==================================================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
-logging.info("File start running...")
-
 # ==================================================================
 # parse arguments
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues)
+parser.add_argument('--train_dataset', default = "site2") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues)
+parser.add_argument('--test_dataset', default = "site1") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
 
@@ -66,9 +64,9 @@ parser.add_argument('--tta_string', default = "tta/")
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE
 # If KDEs, what smoothing parameter
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / EM1 / EM2
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
@@ -83,12 +81,12 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.05) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16)
-# (for cardiac, this needs to set to 8 as volumes there contain less than 16 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 8 / 16
+parser.add_argument('--b_size', type = int, default = 2)
+# (for cardiac and spine, this needs to set to 8 as some volumes there contain less than 16 slices)
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
@@ -150,7 +148,7 @@ subject_name = str(name_test_subjects[sub_num])[2:-1]
 logging.info(subject_name)
 
 # dir where the SD mdoels have been saved
-if args.train_dataset == 'UMC':
+if args.train_dataset in ['UMC', 'site2']:
     expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
@@ -279,20 +277,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                                                         td_variances,
                                                                         order = args.KL_ORDER)
 
-            # =================================
-            # Total loss
-            # =================================
-            loss_op = loss_gaussian_kl_op # mean over all channels of all layers
-
-            # ================================================================
-            # Add losses to tensorboard
-            # ================================================================      
-            tf.summary.scalar('loss/TTA', loss_op)         
-            tf.summary.scalar('loss/Gaussian_KL', loss_gaussian_kl_op)
-            summary_during_tta = tf.summary.merge_all()
-
         # ================================================================
-        # Gaussian / FULL matching WITH KDEs
+        # FULL matching WITH KDEs
         # ================================================================
         elif args.PDF_TYPE == 'KDE':
 
@@ -346,77 +332,124 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 loss_all_kl_g2_op = utils_kde.compute_em_between_kdes(sd_kdes_g2_pl, td_kdes_g2, order = 2)
                 loss_all_kl_g3_op = utils_kde.compute_em_between_kdes(sd_kdes_g3_pl, td_kdes_g3, order = 2)
 
+        # ================================================================
+        # Patch extraction for PCA
+        # ================================================================
+
+        # =============
+        # Combine the softmax scores into a map of foreground probabilities
+        # =============
+        features_fg_probs = tf.expand_dims(tf.math.reduce_max(softmax[:, :, :, 1:], axis=-1), axis=-1)
+
+        # =============
+        # Extract patches
+        # =============
+        patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
+                                                        channel = 0, 
+                                                        psize = args.PCA_PSIZE,
+                                                        stride = args.PCA_STRIDE)        
+
+        # =============
+        # Get indices of active patches
+        # =============
+        indices_active_patches = tf.squeeze(tf.where(patches_fg_probs[:, (args.PCA_PSIZE * (args.PCA_PSIZE + 1)) // 2] > args.PCA_THRESHOLD))
+
+        # =============
+        # Compute features from layer 7_2
+        # =============
+        features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
+
+        # =============
+        # Define PCA PLACEHOLDERS
+        # =============
+        # for loading saved PCA details
+        pca_mean_features_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_mean')
+        pca_components_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM, args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_principal_comps')
+        pca_variance_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM], name = 'pca_variances')
+        # for weight of pca kde matching loss
+        lambda_pca_pl = tf.placeholder(tf.float32, shape = [], name = 'lambda_pca') # shape [1]
+
+        # =============
+        # Compute KDE for each channel of features
+        # =============
+        for c in range(features_td.shape[-1]):
+            patches_features_td_c = utils_kde.extract_patches(features_td,
+                                                                channel = c,
+                                                                psize = args.PCA_PSIZE,
+                                                                stride = args.PCA_STRIDE)
+
+            # =============
+            # select active patches
+            # =============
+            patches_features_td_c_active = tf.gather(patches_features_td_c,
+                                                        indices_active_patches,
+                                                        axis=0)
+
+            # =============
+            # compute PCA latent representation of these patches
+            # =============
+            latent_of_active_patches_td_c = utils_kde.compute_pca_latents(patches_features_td_c_active, # [num_patches, psize*psize]
+                                                                            tf.gather(pca_mean_features_pl, c, axis=0), # [pca.mean_ --> [psize*psize]]
+                                                                            tf.gather(pca_components_pl, c, axis=0), # [pca.components_ --> [num_components, psize*psize]]
+                                                                            tf.gather(pca_variance_pl, c, axis=0)) # [pca.explained_variance_ --> [num_components]]
+            # =============
+            # concat to array containing the latent reps for all channels of the last layer
+            # =============
+            if c == 0:
+                latent_of_active_patches_td = latent_of_active_patches_td_c
+            else:
+                latent_of_active_patches_td = tf.concat([latent_of_active_patches_td, latent_of_active_patches_td_c], -1)
+
+        # ================================================================
+        # Gaussian matching without computing KDE
+        # ================================================================
+        if args.PDF_TYPE == 'GAUSSIAN':
+            
+            # placeholders for SD latents' stats. These will be extracted after loading the SD trained model.
+            sd_latents_means_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_latents_means')
+            sd_latents_variances_pl = tf.placeholder(tf.float32, shape = [None], name = 'sd_latents_variances')
+
             # ================================================================
-            # PCA
+            # the shape of latent_of_active_patches_td is [num_samples, num_pca_latents * num_channels]
+            # the shape of td_latents_means and td_latents_variances will be [num_pca_latents * num_channels]
             # ================================================================
+            td_latents_means, td_latents_variances = tf.nn.moments(latent_of_active_patches_td, axes = [0]) 
+
+            # =================================
+            # Compute KL divergence between Gaussians
+            # =================================
+            loss_pca_kl_op = utils_kde.compute_kl_between_gaussian(sd_latents_means_pl,
+                                                                   sd_latents_variances_pl,
+                                                                   td_latents_means,
+                                                                   td_latents_variances,
+                                                                   order = args.KL_ORDER)
+
+            # =================================
+            # Total loss
+            # =================================
+            loss_op = loss_gaussian_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
+                    
+            # ================================================================
+            # add losses to tensorboard
+            # ================================================================
+            tf.summary.scalar('loss/TTA', loss_op)         
+            tf.summary.scalar('loss/PCA_Gaussians_KL', loss_pca_kl_op)
+            tf.summary.scalar('loss/CNN_Gaussians_KL', loss_gaussian_kl_op)
+            summary_during_tta = tf.summary.merge_all()
+        
+
+        # ================================================================
+        # FULL matching WITH KDEs
+        # ================================================================
+        elif args.PDF_TYPE == 'KDE':
 
             # =============
-            # Combine the softmax scores into a map of foreground probabilities
+            # Placeholders
             # =============
-            features_fg_probs = tf.expand_dims(tf.math.reduce_max(softmax[:, :, :, 1:], axis=-1), axis=-1)
-
-            # =============
-            # Extract patches
-            # =============
-            patches_fg_probs = utils_kde.extract_patches(features_fg_probs,
-                                                         channel = 0, 
-                                                         psize = args.PCA_PSIZE,
-                                                         stride = args.PCA_STRIDE)        
-
-            # =============
-            # Get indices of active patches
-            # =============
-            indices_active_patches = tf.squeeze(tf.where(patches_fg_probs[:, (args.PCA_PSIZE * (args.PCA_PSIZE + 1)) // 2] > args.PCA_THRESHOLD))
-
-            # =============
-            # Compute features from layer 7_2
-            # =============
-            features_td = tf.get_default_graph().get_tensor_by_name('i2l_mapper/conv' + str(7) + '_' + str(2) + '_bn/FusedBatchNorm:0')
-
-            # =============
-            # Define PCA PLACEHOLDERS
-            # =============
-            # for loading saved PCA details
-            pca_mean_features_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_mean')
-            pca_components_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM, args.PCA_PSIZE * args.PCA_PSIZE], name = 'pca_principal_comps')
-            pca_variance_pl = tf.placeholder(tf.float32, shape = [features_td.shape[-1], args.PCA_LATENT_DIM], name = 'pca_variances')
             # for points at which the PDFs are evaluated
             z_kde_pl = tf.placeholder(tf.float32, shape = [101], name = 'z_kdes') # shape [num_points_along_intensity_range]
             # for sd KDEs of latents
             kde_latents_sd_pl = tf.placeholder(tf.float32, shape = [160, 101], name = 'kde_latents_sd') # shape [num_channels*pca_latent_dim, num_points_along_intensity_range]
-            # for weight of pca kde matching loss
-            lambda_pca_pl = tf.placeholder(tf.float32, shape = [], name = 'lambda_pca') # shape [1]
-
-            # =============
-            # Compute KDE for each channel of features
-            # =============
-            for c in range(features_td.shape[-1]):
-                patches_features_td_c = utils_kde.extract_patches(features_td,
-                                                                  channel = c,
-                                                                  psize = args.PCA_PSIZE,
-                                                                  stride = args.PCA_STRIDE)
-
-                # =============
-                # select active patches
-                # =============
-                patches_features_td_c_active = tf.gather(patches_features_td_c,
-                                                         indices_active_patches,
-                                                         axis=0)
-
-                # =============
-                # compute PCA latent representation of these patches
-                # =============
-                latent_of_active_patches_td_c = utils_kde.compute_pca_latents(patches_features_td_c_active, # [num_patches, psize*psize]
-                                                                              tf.gather(pca_mean_features_pl, c, axis=0), # [pca.mean_ --> [psize*psize]]
-                                                                              tf.gather(pca_components_pl, c, axis=0), # [pca.components_ --> [num_components, psize*psize]]
-                                                                              tf.gather(pca_variance_pl, c, axis=0)) # [pca.explained_variance_ --> [num_components]]
-                # =============
-                # concat to array containing the latent reps for all channels of the last layer
-                # =============
-                if c == 0:
-                    latent_of_active_patches_td = latent_of_active_patches_td_c
-                else:
-                    latent_of_active_patches_td = tf.concat([latent_of_active_patches_td, latent_of_active_patches_td_c], -1)
 
             # =============
             # compute per-dimension KDE of the latents
@@ -488,7 +521,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # add init ops
         # ================================================================
         init_ops = tf.global_variables_initializer()
-        init_tta_ops = tf.initialize_variables(tta_vars) # set TTA vars to random values
+        # init_tta_ops = tf.initialize_variables(tta_vars) # set TTA vars to random values
                 
         # ================================================================
         # create session
@@ -522,8 +555,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # create saver
         # ================================================================
         saver_i2l = tf.train.Saver(var_list = i2l_vars)
-        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=10)   
-        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=3)   
+        saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1)   
+        saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1) 
                 
         # ================================================================
         # freeze the graph before execution
@@ -572,33 +605,35 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             kdes_sd_g2 = np.load(log_dir_pdfs + exp_config.make_sd_kde_name(b_size_compute_sd_pdfs, args.KDE_ALPHA, kde_g2_params) + '_g2.npy')
             kdes_sd_g3 = np.load(log_dir_pdfs + exp_config.make_sd_kde_name(b_size_compute_sd_pdfs, args.KDE_ALPHA, kde_g3_params) + '_g3.npy')
 
-            # =============================
-            # LOAD PCA RESULTS
-            # =============================            
-            pca_dir = log_dir_pdfs + exp_config.make_pca_dir_name(args)        
-            num_pca_channels = 16
-            pca_means = []
-            pca_pcs = []
-            pca_vars = []
+        # =============================
+        # LOAD PCA RESULTS
+        # =============================            
+        pca_dir = log_dir_pdfs + exp_config.make_pca_dir_name(args)
+        num_pca_channels = 16
+        pca_means = []
+        pca_pcs = []
+        pca_vars = []
 
-            for c in range(num_pca_channels):
+        for c in range(num_pca_channels):
 
-                # load pca components, mean, variances
-                pca_c = pk.load(open(pca_dir + 'c' + str(c) + '.pkl', 'rb'))
-                pca_means.append(pca_c.mean_)
-                pca_pcs.append(pca_c.components_)
-                pca_vars.append(pca_c.explained_variance_)
+            # load pca components, mean, variances
+            pca_c = pk.load(open(pca_dir + 'c' + str(c) + '.pkl', 'rb'))
+            pca_means.append(pca_c.mean_)
+            pca_pcs.append(pca_c.components_)
+            pca_vars.append(pca_c.explained_variance_)
 
-                # load sd kdes
-                pca_latent_sd_kdes_c = np.load(pca_dir + 'c' + str(c) + '.npy') # [num_sd_subjects, num_latents, num_z_values]
-                if c == 0:
-                    pca_latent_sd_kdes = pca_latent_sd_kdes_c
-                else:
-                    pca_latent_sd_kdes = np.concatenate((pca_latent_sd_kdes, pca_latent_sd_kdes_c), axis=1)
+            # load sd kdes / gaussians
+            pca_latent_sd_kdes_c = np.load(pca_dir + 'c' + str(c) + '.npy') 
+            # if KDEs: [num_sd_subjects, num_latents, num_z_values]
+            # if GAUSSIANS: [num_sd_subjects, num_latents, 2]
+            if c == 0:
+                pca_latent_sd_kdes = pca_latent_sd_kdes_c
+            else:
+                pca_latent_sd_kdes = np.concatenate((pca_latent_sd_kdes, pca_latent_sd_kdes_c), axis=1)
 
-            pca_means = np.array(pca_means)
-            pca_pcs = np.array(pca_pcs)
-            pca_vars = np.array(pca_vars)
+        pca_means = np.array(pca_means)
+        pca_pcs = np.array(pca_pcs)
+        pca_vars = np.array(pca_vars)
 
         # ===================================
         # TTA / SFDA iterations
@@ -640,6 +675,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     sd_kde_latents_this_step = np.mean(pca_latent_sd_kdes, axis = 0)
                 elif args.PDF_TYPE == 'GAUSSIAN':
                     sd_gaussian_this_step = np.mean(gaussians_sd, axis=0)
+                    sd_gaussian_latents_this_step = np.mean(pca_latent_sd_kdes, axis=0)
 
             # Select a different SD subject for each TTA iteration
             elif args.match_with_sd == 2: 
@@ -652,6 +688,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 elif args.PDF_TYPE == 'GAUSSIAN':
                     sub_id = np.random.randint(gaussians_sd.shape[0])
                     sd_gaussian_this_step = gaussians_sd[sub_id, :, :]
+                    sd_gaussian_latents_this_step = pca_latent_sd_kdes[sub_id, :, :]
                             
             # =============================
             # Adaptation iterations within this epoch
@@ -684,9 +721,15 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], b_size), :, :], axis=-1),
                                sd_means_pl: sd_gaussian_this_step[:,0], 
                                sd_variances_pl: sd_gaussian_this_step[:,1],
+                               sd_latents_means_pl: sd_gaussian_latents_this_step[:,0], 
+                               sd_latents_variances_pl: sd_gaussian_latents_this_step[:,1],
                                lr_pl: tta_learning_rate,
                                delta_x_pl: padding_x,
-                               delta_y_pl: padding_y}
+                               delta_y_pl: padding_y,
+                               pca_mean_features_pl: pca_means,
+                               pca_components_pl: pca_pcs,
+                               pca_variance_pl: pca_vars,
+                               lambda_pca_pl: args.PCA_LAMBDA}
 
                 # run the accumulate gradients op 
                 sess.run(accumulate_gradients_op, feed_dict=feed_dict)

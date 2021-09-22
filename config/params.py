@@ -314,9 +314,9 @@ def make_tta_exp_name(args, tta_method = 'FoE'):
     elif tta_method == 'AE':
         exp_str = args.tta_string + args.tta_method + '/r' + str(args.ae_runnum) + '/'
         exp_str = exp_str + 'subjectwise/AEs_' + str(args.whichAEs) + '/'
-        exp_str = exp_str + 'lambda_spectral_' + str(args.lambda_spectral) + '/'
-        exp_str = exp_str + 'Vars' + args.TTA_VARS 
-        exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
+        exp_str = exp_str + 'lambda_spectral_' + str(args.lambda_spectral) + '_vars' + args.TTA_VARS 
+        exp_str = exp_str + '/BS' + str(args.b_size) # TTA batch size
+        exp_str = exp_str + '_accumgrad' + str(args.accum_gradients) # TTA accumulate gradients or not
         exp_str = exp_str + '_LR' + str(args.tta_learning_rate) # TTA Learning Rate
         exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
         exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
