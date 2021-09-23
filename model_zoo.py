@@ -7,7 +7,7 @@ from tfwrapper import layers
 # ======================================================================
 # adaptor Ax
 # ======================================================================
-def adaptor_Ax(images):
+def adaptor_Ax(images, instance_normalze = 0):
         
     with tf.variable_scope('adaptAx') as scope:
                                 
@@ -22,7 +22,8 @@ def adaptor_Ax(images):
                                     use_bias=True,
                                     activation=tf.identity,
                                     kernel_initializer = tf.initializers.random_normal(mean=1.0/1.0, stddev=tf.math.sqrt(2.0 / 1.0))) # initializing with mean weights around 1 to have close to an identity mapping at the start of TTA
-        # adapt_f1 = layers.instance_normalize(adapt_f1) # using IN leads to very poor performance at the start of TTA. and the AE loss cannot pull the performance up from there.
+        if instance_normalze == 1:
+            adapt_f1 = layers.instance_normalize(adapt_f1) # using IN leads to very poor performance at the start of TTA. and the AE loss cannot pull the performance up from there.
         adapt_f1 = tf.nn.leaky_relu(adapt_f1)
         
         adapt_f2 = tf.layers.conv2d(inputs=adapt_f1,
@@ -33,7 +34,8 @@ def adaptor_Ax(images):
                                     use_bias=True,
                                     activation=tf.identity,
                                     kernel_initializer = tf.initializers.random_normal(mean=1.0/64.0, stddev=tf.math.sqrt(2.0 / 64.0)))
-        # adapt_f2 = layers.instance_normalize(adapt_f2)
+        if instance_normalze == 1:
+            adapt_f2 = layers.instance_normalize(adapt_f2)
         adapt_f2 = tf.nn.leaky_relu(adapt_f2)
 
         adapt_output = tf.layers.conv2d(inputs=adapt_f2,
@@ -69,8 +71,8 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # Feature adaptor 1
     # ====================================
-    with tf.variable_scope('adaptAf') as scope:
-        pool1_adapted = tf.layers.conv2d(inputs=pool1, filters=n1, kernel_size=1, padding='SAME', name='A1', use_bias=True, activation=tf.identity,
+    # with tf.variable_scope('adaptAf') as scope:
+        pool1_adapted = tf.layers.conv2d(inputs=pool1, filters=n1, kernel_size=1, padding='SAME', name='adaptAf_A1', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
         # These weights will be initialized to identity mappings in the TTA file.
         # Can't figure out how to do this directly here..
@@ -78,7 +80,7 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # 2nd Conv block
     # ====================================
-    with tf.variable_scope('i2l_mapper') as scope:
+    # with tf.variable_scope('i2l_mapper') as scope:
         conv2_1 = layers.conv2D_layer_bn(x=pool1_adapted, name='conv2_1', num_filters=n2, training = training_pl)
         conv2_2 = layers.conv2D_layer_bn(x=conv2_1, name='conv2_2', num_filters=n2, training = training_pl)
         pool2 = layers.max_pool_layer2d(conv2_2)
@@ -86,8 +88,8 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # Feature adaptor 2
     # ====================================
-    with tf.variable_scope('adaptAf') as scope:
-        pool2_adapted = tf.layers.conv2d(inputs=pool2, filters=n2, kernel_size=1, padding='SAME', name='A2', use_bias=True, activation=tf.identity,
+    # with tf.variable_scope('adaptAf') as scope:
+        pool2_adapted = tf.layers.conv2d(inputs=pool2, filters=n2, kernel_size=1, padding='SAME', name='adaptAf_A2', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
         # These weights will be initialized to identity mappings in the TTA file.
         # Can't figure out how to do this directly here..
@@ -95,7 +97,7 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # 3rd Conv block
     # ====================================
-    with tf.variable_scope('i2l_mapper') as scope:
+    # with tf.variable_scope('i2l_mapper') as scope:
         conv3_1 = layers.conv2D_layer_bn(x=pool2_adapted, name='conv3_1', num_filters=n3, training = training_pl)
         conv3_2 = layers.conv2D_layer_bn(x=conv3_1, name='conv3_2', num_filters=n3, training = training_pl)
         pool3 = layers.max_pool_layer2d(conv3_1)
@@ -103,8 +105,8 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # Feature adaptor 3
     # ====================================
-    with tf.variable_scope('adaptAf') as scope:
-        pool3_adapted = tf.layers.conv2d(inputs=pool3, filters=n3, kernel_size=1, padding='SAME', name='A3', use_bias=True, activation=tf.identity,
+    # with tf.variable_scope('adaptAf') as scope:
+        pool3_adapted = tf.layers.conv2d(inputs=pool3, filters=n3, kernel_size=1, padding='SAME', name='adaptAf_A3', use_bias=True, activation=tf.identity,
                                          kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
         # These weights will be initialized to identity mappings in the TTA file.
         # Can't figure out how to do this directly here..
@@ -112,7 +114,7 @@ def unet2D_i2l_with_adaptors(images,
     # ====================================
     # 4th Conv block and decoder blocks
     # ====================================
-    with tf.variable_scope('i2l_mapper') as scope:
+    # with tf.variable_scope('i2l_mapper') as scope:
         conv4_1 = layers.conv2D_layer_bn(x=pool3_adapted, name='conv4_1', num_filters=n4, training = training_pl)
         conv4_2 = layers.conv2D_layer_bn(x=conv4_1, name='conv4_2', num_filters=n4, training = training_pl)
     

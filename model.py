@@ -126,9 +126,9 @@ def normalize(images,
 
 # ================================================================
 # ================================================================
-def adapt_Ax(images, exp_config):
+def adapt_Ax(images, exp_config, instance_norm = 0):
 
-    return exp_config.model_handle_adaptorAx(images)
+    return exp_config.model_handle_adaptorAx(images, instance_norm)
 
 # ================================================================
 # ================================================================

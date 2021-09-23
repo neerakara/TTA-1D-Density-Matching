@@ -51,20 +51,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "site2") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "site1") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
+parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--test_sub_num', type = int, default = 1) # 0 to 19
+parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 
 # TTA base string
 parser.add_argument('--tta_string', default = "tta/")
+parser.add_argument('--tta_method', default = "FoE")
 # Which vars to adapt?
-parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM
+parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM / AdaptAx / AdaptAxAf
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0
 # How many moments to match and how?
@@ -81,18 +82,24 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 2)
-# (for cardiac and spine, this needs to set to 8 as some volumes there contain less than 16 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
+parser.add_argument('--b_size', type = int, default = 8)
+# (for spine "site1", this needs to set to 2 as volumes there contain less than 8 slices)
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 1e-5) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
+
+# weight of spectral norm loss
+parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
+
+# whether to print debug stuff or not
+parser.add_argument('--debug', type = int, default = 0) # 1 / 0
 
 # parse arguments
 args = parser.parse_args()
@@ -158,7 +165,7 @@ log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 log_dir_pdfs = log_dir + 'onedpdfs/'
 
 # dir for TTA
-exp_str = exp_config.make_tta_exp_name(args) + args.test_dataset + '_' + subject_name
+exp_str = exp_config.make_tta_exp_name(args, tta_method = args.tta_method) + args.test_dataset + '_' + subject_name
 log_dir_tta = log_dir + exp_str
 tensorboard_dir_tta = sys_config.tensorboard_root + expname_i2l + exp_str
 
@@ -218,16 +225,40 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         delta_x_pl = tf.placeholder(tf.int32, shape = [], name='zero_padding_x_pl')
         delta_y_pl = tf.placeholder(tf.int32, shape = [], name='zero_padding_y_pl')
 
-        # ================================================================
-        # Insert a normalization module in front of the segmentation network
-        # the normalization module is adapted for each test image
-        # ================================================================
-        images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = training_pl)
-        
-        # ================================================================
-        # Build the graph that computes predictions from the inference model
-        # ================================================================
-        logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+
+            # ================================================================
+            # Insert a randomly initialized 1x1 'adaptor' even before the normalization module.
+            # To follow the procedure used in He MedIA 2021, we will adapt this module for each test volume, and keep the normalization module fixed at the values learned on the SD.
+            # ================================================================
+            images_adapted = model.adapt_Ax(images_pl, exp_config)
+
+            # ================================================================
+            # Insert a normalization module in front of the segmentation network
+            # the normalization module is adapted for each test image
+            # ================================================================
+            images_normalized, added_residual = model.normalize(images_adapted, exp_config, training_pl = training_pl)
+
+            # ================================================================
+            # Build the graph that computes predictions from the inference model
+            # ================================================================    
+            logits, softmax, preds = model.predict_i2l_with_adaptors(images_normalized,
+                                                                     exp_config,
+                                                                     training_pl = training_pl,
+                                                                     nlabels = nlabels,
+                                                                     return_features = False)
+
+        else: # Directly feed the input image to the normalization module
+            # ================================================================
+            # Insert a normalization module in front of the segmentation network
+            # the normalization module is adapted for each test image
+            # ================================================================
+            images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = training_pl)
+
+            # ================================================================
+            # Build the graph that computes predictions from the inference model
+            # ================================================================        
+            logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
         
         # ================================================================
         # Divide the vars into segmentation network and normalization network
@@ -235,13 +266,66 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         i2l_vars = []
         normalization_vars = []
         bn_vars = []
+        adapt_ax_vars = []
+        adapt_af_vars = []
         for v in tf.global_variables():
-            var_name = v.name        
-            i2l_vars.append(v)
+            var_name = v.name   
+            logging.info(var_name)     
             if 'image_normalizer' in var_name:
+                i2l_vars.append(v)
                 normalization_vars.append(v)
-            if 'beta' in var_name or 'gamma' in var_name:
+            if 'beta' in var_name or 'gamma' in var_name: # assumes to batch normalization layers in Ax and Af
                 bn_vars.append(v)
+            if 'adaptAx' in var_name:
+                adapt_ax_vars.append(v)
+            if 'adaptAf' in var_name:
+                adapt_af_vars.append(v)
+            elif 'i2l_mapper' in var_name:
+                i2l_vars.append(v)
+
+        if args.debug == 1:
+            logging.info("Ax vars")
+            for v in adapt_ax_vars:
+                logging.info(v.name)
+                logging.info(v.shape)
+            
+            logging.info("Af vars")
+            for v in adapt_af_vars:
+                logging.info(v.name)
+                logging.info(v.shape)
+
+            logging.info("i2l vars")
+            for v in i2l_vars:
+                logging.info(v.name)
+
+            logging.info("normalization vars")
+            for v in normalization_vars:
+                logging.info(v.name)
+
+        # ================================================================
+        # ops for initializing feature adaptors to identity
+        # ================================================================
+        if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+          
+            wf1 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A1/kernel:0"][0]
+            wf2 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A2/kernel:0"][0]
+            wf3 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A3/kernel:0"][0]
+          
+            if args.debug == 1:
+                logging.info("Weight matrices of feature adaptors.. ")
+                logging.info(wf1)
+                logging.info(wf2)
+                logging.info(wf3)
+          
+            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
+            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
+            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
+          
+            init_wf1_op = wf1.assign(wf1_init_pl)
+            init_wf2_op = wf2.assign(wf2_init_pl)
+            init_wf3_op = wf3.assign(wf3_init_pl)
+
+            init_ax_op = tf.train.AdamOptimizer(learning_rate = 0.001).minimize(tf.reduce_mean(tf.square(images_adapted - images_pl)), var_list=adapt_ax_vars)
 
         # ================================================================
         # Set TTA vars
@@ -250,6 +334,19 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             tta_vars = bn_vars
         elif args.TTA_VARS == "NORM":
             tta_vars = normalization_vars
+        elif args.TTA_VARS == "AdaptAx":
+            tta_vars = adapt_ax_vars
+        elif args.TTA_VARS == "AdaptAxAf":
+            tta_vars = adapt_ax_vars + adapt_af_vars
+
+        # ================================================================
+        # TTA loss - spectral norm of the feature adaptors
+        # ================================================================
+        if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+            loss_spectral_norm_wf1_op = model.spectral_loss(wf1)
+            loss_spectral_norm_wf2_op = model.spectral_loss(wf2)
+            loss_spectral_norm_wf3_op = model.spectral_loss(wf3)
+            loss_spectral_norm_op = loss_spectral_norm_wf1_op + loss_spectral_norm_wf2_op + loss_spectral_norm_wf3_op
 
         # ================================================================
         # Gaussian matching without computing KDE
@@ -427,7 +524,10 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # =================================
             # Total loss
             # =================================
-            loss_op = loss_gaussian_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
+            if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+                loss_op = loss_gaussian_kl_op + args.PCA_LAMBDA * loss_pca_kl_op + args.lambda_spectral * loss_spectral_norm_op
+            else:
+                loss_op = loss_gaussian_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
                     
             # ================================================================
             # add losses to tensorboard
@@ -435,8 +535,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             tf.summary.scalar('loss/TTA', loss_op)         
             tf.summary.scalar('loss/PCA_Gaussians_KL', loss_pca_kl_op)
             tf.summary.scalar('loss/CNN_Gaussians_KL', loss_gaussian_kl_op)
+            if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+                tf.summary.scalar('loss/spectral_loss', loss_spectral_norm_op)
             summary_during_tta = tf.summary.merge_all()
-        
 
         # ================================================================
         # FULL matching WITH KDEs
@@ -475,7 +576,13 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             ncg2 = 16
             ncg3 = nlabels
             loss_all_kl_op = (ncg1 * loss_all_kl_g1_op + ncg2 * loss_all_kl_g2_op + ncg3 * loss_all_kl_g3_op) / (ncg1 + ncg2 + ncg3)
-            loss_op = loss_all_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
+            # =================================
+            # Total loss
+            # =================================
+            if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+                loss_op = loss_all_kl_op + args.PCA_LAMBDA * loss_pca_kl_op + args.lambda_spectral * loss_spectral_norm_op
+            else:
+                loss_op = loss_all_kl_op + args.PCA_LAMBDA * loss_pca_kl_op
                     
             # ================================================================
             # add losses to tensorboard
@@ -486,6 +593,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             tf.summary.scalar('loss/KDE_KL_G3', loss_all_kl_g3_op)
             tf.summary.scalar('loss/KDE_KL_PCA', loss_pca_kl_op)
             tf.summary.scalar('loss/KDE_KL', loss_all_kl_op)
+            if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+                tf.summary.scalar('loss/spectral_loss', loss_spectral_norm_op)
             summary_during_tta = tf.summary.merge_all()
         
         # ================================================================
@@ -514,6 +623,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # placeholder for logging a smoothened loss
         # ================================================================                        
+        loss_whole_subject_pl = tf.placeholder(tf.float32, shape = [], name = 'loss_whole_subject') # shape [1]
+        loss_whole_subject_summary = tf.summary.scalar('loss/TTA_whole_subject', loss_whole_subject_pl)
         loss_ema_pl = tf.placeholder(tf.float32, shape = [], name = 'loss_ema') # shape [1]
         loss_ema_summary = tf.summary.scalar('loss/TTA_EMA', loss_ema_pl)
 
@@ -567,6 +678,21 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # Run the Op to initialize the variables.
         # ================================================================
         sess.run(init_ops)
+        if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(16), axis=0), axis=0)})
+            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
+            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
+            if args.debug == 1:
+                logging.info('Initialized feature adaptors..')   
+                logging.info(wf1.eval(session=sess))
+                logging.info(wf2.eval(session=sess))
+                logging.info(wf3.eval(session=sess))
+
+            logging.info('Training Ax to be the identity mapping..')
+            for _ in range(100):
+                sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
+            logging.info('Done.. now doing TTA ops from here..')
+            
         
         # ================================================================
         # Restore the segmentation network parameters
@@ -634,6 +760,28 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         pca_means = np.array(pca_means)
         pca_pcs = np.array(pca_pcs)
         pca_vars = np.array(pca_vars)
+
+        # ===========================
+        # get dice wrt ground truth before any TTA updates have been done
+        # ===========================
+        b_size = args.b_size
+        label_predicted = []
+        for b_i in range(0, test_image.shape[0], b_size):
+            if b_i + b_size < test_image.shape[0]:
+                batch = np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1)
+            else:
+                # pad zeros to have complete batches
+                extra_zeros_needed = b_i + b_size - test_image.shape[0]
+                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...], np.zeros((extra_zeros_needed, test_image.shape[1], test_image.shape[2]))), axis=0), axis=-1)
+            label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
+        label_predicted = np.squeeze(np.array(label_predicted)).astype(float)  
+        if b_size > 1 and test_image.shape[0] > b_size:
+            label_predicted = np.reshape(label_predicted, (label_predicted.shape[0]*label_predicted.shape[1], label_predicted.shape[2], label_predicted.shape[3]))
+        label_predicted = label_predicted[:test_image.shape[0], ...]
+        if args.test_dataset in ['UCL', 'HK', 'BIDMC']:
+            label_predicted[label_predicted!=0.0] = 1.0
+        dice_wrt_gt = met.f1_score(test_image_gt.flatten(), label_predicted.flatten(), average=None) 
+        summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice: np.mean(dice_wrt_gt[1:])}), 0)
 
         # ===================================
         # TTA / SFDA iterations

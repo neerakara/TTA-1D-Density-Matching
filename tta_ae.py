@@ -63,7 +63,7 @@ parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # BN / NORM / AdaptAx /
 parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 1)
+parser.add_argument('--b_size', type = int, default = 8)
 
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 1e-5) # 0.001 / 0.0005 / 0.0001 
@@ -71,16 +71,17 @@ parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
 # Which vars to adapt?
-parser.add_argument('--accum_gradients', type = int, default = 0) # 0 / 1
-
-# Number of TTA steps
-parser.add_argument('--tta_max_steps', type = int, default = 101) # 0 / 1
+parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
 
 # weight of spectral norm loss compared to the AE recon loss
 parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
 
 # whether to print debug stuff or not
 parser.add_argument('--debug', type = int, default = 0) # 1 / 0
+
+# whether to train Ax first or not
+parser.add_argument('--train_Ax_first', type = int, default = 0) # 1 / 0
+parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
 
 # parse arguments
 args = parser.parse_args()
@@ -93,7 +94,7 @@ image_size = dataset_params[0]
 nlabels = dataset_params[1]
 target_resolution = dataset_params[2]
 image_depth_ts = dataset_params[4]
-tta_max_steps = args.tta_max_steps # dataset_params[6]
+tta_max_steps = dataset_params[6]
 tta_model_saving_freq = dataset_params[7]
 tta_vis_freq = dataset_params[8]
 
@@ -181,7 +182,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # Insert a randomly initialized 1x1 'adaptor' even before the normalization module.
             # To follow the procedure used in He MedIA 2021, we will adapt this module for each test volume, and keep the normalization module fixed at the values learned on the SD.
             # ================================================================
-            images_adapted = model.adapt_Ax(images_pl, exp_config)
+            images_adapted = model.adapt_Ax(images_pl, exp_config, instance_norm = args.instance_norm_in_Ax)
 
             # ================================================================
             # Insert a normalization module in front of the segmentation network
@@ -234,8 +235,6 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 normalization_vars.append(v)
             if 'beta' in var_name or 'gamma' in var_name:
                 bn_vars.append(v)
-            if 'i2l_mapper' in var_name:
-                i2l_vars.append(v)
             if 'self_sup_ae_xn' in var_name:
                 ae_xn_vars.append(v)
             if 'self_sup_ae_y' in var_name:
@@ -250,6 +249,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 adapt_ax_vars.append(v)
             if 'adaptAf' in var_name:
                 adapt_af_vars.append(v)
+            elif 'i2l_mapper' in var_name:
+                i2l_vars.append(v)
 
         if args.debug == 1:
             logging.info("Ax vars")
@@ -265,9 +266,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # ops for initializing feature adaptors to identity
         # ================================================================
-        wf1 = [v for v in tf.global_variables() if v.name == "adaptAf/A1/kernel:0"][0]
-        wf2 = [v for v in tf.global_variables() if v.name == "adaptAf/A2/kernel:0"][0]
-        wf3 = [v for v in tf.global_variables() if v.name == "adaptAf/A3/kernel:0"][0]
+        wf1 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A1/kernel:0"][0]
+        wf2 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A2/kernel:0"][0]
+        wf3 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A3/kernel:0"][0]
         if args.debug == 1:
             logging.info("Weight matrices of feature adaptors.. ")
             logging.info(wf1)
@@ -279,6 +280,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         init_wf1_op = wf1.assign(wf1_init_pl)
         init_wf2_op = wf2.assign(wf2_init_pl)
         init_wf3_op = wf3.assign(wf3_init_pl)
+
+        # op for optimizing Ax to be near identity
+        init_ax_op = tf.train.AdamOptimizer(learning_rate = 0.001).minimize(tf.reduce_mean(tf.square(images_adapted - images_pl)), var_list=adapt_ax_vars)
 
         # ================================================================
         # Set TTA vars
@@ -443,6 +447,12 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             logging.info(wf1.eval(session=sess))
             logging.info(wf2.eval(session=sess))
             logging.info(wf3.eval(session=sess))
+
+        if args.train_Ax_first == 1:
+            logging.info('Training Ax to be the identity mapping..')
+            for _ in range(100):
+                sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
+            logging.info('Done.. now doing TTA ops from here..')
         
         # ================================================================
         # Restore the normalization + segmentation network parameters
@@ -482,7 +492,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         saver_ae_f2.restore(sess, checkpoint_path)
 
         # ================================================================
-        # Restore the autoencoder (F1) parameters
+        # Restore the autoencoder (F3) parameters
         # ================================================================
         checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'f3/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
