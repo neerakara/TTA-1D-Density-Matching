@@ -19,28 +19,45 @@ import argparse
 # parse arguments
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
+
+# ====================
 # Training dataset and run number
+# ====================
 parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
+
+# ====================
 # Test dataset 
+# ====================
 parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site1, site2, site3, site4
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2 / 3 / 4
 parser.add_argument('--NORMALIZE', type = int, default = 1) # 1 / 0
 
+# ====================
 # TRANSFER LEARNING OPTIONS
+# ====================
 parser.add_argument('--TRANSFER', type = int, default = 0) # 1 / 0
 parser.add_argument('--TL_STRING', default = "tl/") # TL base string
 parser.add_argument('--TL_VARS', default = "ALL") # BN / NORM / ALL # Which vars to adapt?
 parser.add_argument('--tl_runnum', type = int, default = 1) # 1 / 2 / 3
 
-# TTA options
-parser.add_argument('--tta_string', default = "tta/")
-parser.add_argument('--tta_method', default = "entropy_min") # FoE / entropy_min / AE
-parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE / KDE_PCA # Whether to use Gaussians / KDEs
-parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0 / 100.0 / 1000.0 # If KDEs, what smoothing parameter
-parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM # Which vars to adapt?
+# ====================
+# TTA vars
+# ====================
+parser.add_argument('--TTA_VARS', default = "NORM") # Which vars to adapt? - BN / NORM / AdaptAx / AdaptAxAf
 
+# ====================
+# TTA method
+# ====================
+parser.add_argument('--tta_string', default = "tta/")
+parser.add_argument('--tta_method', default = "FoE") # FoE / entropy_min / AE
+
+# ====================
+# options for TTA-FoE
+# ====================
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE / KDE_PCA # Whether to use Gaussians / KDEs
+parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # If KDEs, what smoothing parameter - 10.0 / 100.0 / 1000.0 
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 32 / 64 / 128
 parser.add_argument('--PCA_STRIDE', type = int, default = 8)
@@ -49,19 +66,36 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
-
+parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 0.0 / 1.0 / 0.1 / 0.01 
 # How many moments to match and how?
 parser.add_argument('--LOSS_TYPE', default = "KL") # KL / 
 parser.add_argument('--KL_ORDER', default = "SD_vs_TD") # SD_vs_TD / TD_vs_SD
 parser.add_argument('--match_with_sd', type = int, default = 2) # 1 / 2 / 3 / 4 # Matching settings
-
-# Batch settings
-parser.add_argument('--b_size', type = int, default = 16)
-# (for cardiac and spine, this needs to set to 8 as volumes there contain less than 16 slices)
+# Subsampling options 
 parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
+# ====================
+# options for TTA-AE
+# ====================
+parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2 
+# which AEs
+parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
+# weight of spectral norm loss compared to the AE recon loss
+parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
+# whether to train Ax first or not
+parser.add_argument('--train_Ax_first', type = int, default = 0) # 1 / 0
+parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
+# During TTA, accumulate gradients over the whole volume or not?
+parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
+# Which model to use for evaluation
+parser.add_argument('--stopping_criterion', default = 'best_loss') # best_loss / best_loss_sos
+
+# ====================
+# Optimization options
+# ====================
+# Batch settings (for cardiac and spine, this needs to set to 8 as volumes there contain less than 16 slices)
+parser.add_argument('--b_size', type = int, default = 8)
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
@@ -90,10 +124,16 @@ else:
     expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
+# ==================================
+# Transfer Learning (Benchmark)
+# ==================================
 if args.TRANSFER == 1:
     exp_str = exp_config.make_tl_exp_name(args)
     log_dir_tl = log_dir_sd + exp_str
 
+# ==================================
+# Test Time Adaptation
+# ==================================
 if args.NORMALIZE == 1:
     exp_str = exp_config.make_tta_exp_name(args, tta_method = args.tta_method)
     log_dir_tta = log_dir_sd + exp_str
@@ -102,9 +142,7 @@ if args.NORMALIZE == 1:
 # ==================================================================
 # main function for inference
 # ==================================================================
-def predict_segmentation(subject_name,
-                         image,
-                         normalize = 1):
+def predict_segmentation(subject_name, image, normalize = 1):
     
     # ================================================================
     # build the TF graph
@@ -114,44 +152,35 @@ def predict_segmentation(subject_name,
         # ================================================================
         # create placeholders
         # ================================================================
-        images_pl = tf.placeholder(tf.float32,
-                                   shape = [None] + list(image_size) + [1],
-                                   name = 'images')
+        images_pl = tf.placeholder(tf.float32, shape = [None] + list(image_size) + [1], name = 'images')
 
         # ================================================================
-        # insert a normalization module in front of the segmentation network
-        # the normalization module is trained for each test image
+        # define networks
         # ================================================================
-        images_normalized, added_residual = model.normalize(images_pl,
-                                                            exp_config,
-                                                            training_pl = tf.constant(False, dtype=tf.bool))
-        
-        # ================================================================
-        # build the graph that computes predictions from the inference model
-        # ================================================================
-        logits, softmax, preds = model.predict_i2l(images_normalized,
-                                                   exp_config,
-                                                   training_pl = tf.constant(False, dtype=tf.bool),
-                                                   nlabels = nlabels)
+        if normalize == 1 and args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            images_adapted = model.adapt_Ax(images_pl, exp_config, instance_norm = args.instance_norm_in_Ax)
+            images_normalized, added_residual = model.normalize(images_adapted, exp_config, training_pl = tf.constant(False, dtype=tf.bool))
+            logits, softmax, preds = model.predict_i2l_with_adaptors(images_normalized, exp_config, training_pl = tf.constant(False, dtype=tf.bool), nlabels = nlabels, return_features = False)
+        else:
+            images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = tf.constant(False, dtype=tf.bool))
+            logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = tf.constant(False, dtype=tf.bool), nlabels = nlabels)
                         
         # ================================================================
         # divide the vars into segmentation network and normalization network
         # ================================================================
-        i2l_vars = []
-        normalization_vars = []
-        bn_vars = []
-        for v in tf.global_variables():
-            var_name = v.name        
-            i2l_vars.append(v)
-            if 'image_normalizer' in var_name:
-                normalization_vars.append(v)
-            if 'beta' in var_name or 'gamma' in var_name:
-                bn_vars.append(v)
+        i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars = model.divide_vars_into_groups(tf.global_variables())
 
-        if args.TTA_VARS == 'BN':
+        # ================================================================
+        # Set TTA vars
+        # ================================================================
+        if args.TTA_VARS == "BN":
             tta_vars = bn_vars
-        elif args.TTA_VARS == 'NORM':
+        elif args.TTA_VARS == "NORM":
             tta_vars = normalization_vars
+        elif args.TTA_VARS == "AdaptAx":
+            tta_vars = adapt_ax_vars
+        elif args.TTA_VARS == "AdaptAxAf":
+            tta_vars = adapt_ax_vars + adapt_af_vars
                                 
         # ================================================================
         # add init ops
@@ -198,8 +227,7 @@ def predict_segmentation(subject_name,
             logging.info('============================================================')
             subject_string = args.test_dataset + '_' + subject_name + '/'
             path_to_model = log_dir_tta + subject_string + 'models/'
-
-            checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, 'best_loss.ckpt')
+            checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_model, args.stopping_criterion + '.ckpt')
             logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
             saver_tta.restore(sess, checkpoint_path)
             logging.info('============================================================')
@@ -226,40 +254,21 @@ def predict_segmentation(subject_name,
     
 # ================================================================
 # ================================================================
-def rescale_and_crop(arr,
-                     px,
-                     py,
-                     nx,
-                     ny,
-                     order_interpolation,
-                     num_rotations):
+def rescale_and_crop(arr, px, py, nx, ny, order_interpolation, num_rotations):
     
     # 'target_resolution_brain' contains the resolution that the images were rescaled to, during the pre-processing.
     # we need to undo this rescaling before evaluation
-    scale_vector = [target_resolution[0] / px,
-                    target_resolution[1] / py]
-
+    scale_vector = [target_resolution[0] / px, target_resolution[1] / py]
     arr_list = []
     
     for zz in range(arr.shape[0]):
-     
         # ============
         # rotate the labels back to the original orientation
         # ============            
         arr2d_rotated = np.rot90(np.squeeze(arr[zz, :, :]), k=num_rotations)
-        
-        arr2d_rescaled = rescale(arr2d_rotated,
-                                 scale_vector,
-                                 order = order_interpolation,
-                                 preserve_range = True,
-                                 multichannel = False,
-                                 mode = 'constant',
-                                 anti_aliasing = False)
-
+        arr2d_rescaled = rescale(arr2d_rotated, scale_vector, order = order_interpolation, preserve_range = True, multichannel = False, mode = 'constant', anti_aliasing = False)
         arr2d_rescaled_cropped = utils.crop_or_pad_slice_to_size(arr2d_rescaled, nx, ny)
-
         arr_list.append(arr2d_rescaled_cropped)
-    
     arr_orig_res_and_size = np.array(arr_list)
     arr_orig_res_and_size = arr_orig_res_and_size.swapaxes(0, 1).swapaxes(1, 2)
     
@@ -307,10 +316,13 @@ def main():
                 tf.gfile.MakeDirs(log_dir_tl + 'results/')
             results_filename = log_dir_tl + 'results/' + test_dataset_name + '_test'
     
-    results_filename = results_filename + '_cv' + str(args.test_cv_fold_num)
+    results_filename += '_cv' + str(args.test_cv_fold_num)
+
+    if args.NORMALIZE == 1 and args.tta_method == 'AE':
+        results_filename += args.stopping_criterion 
 
     if whole_gland_results == True:
-        results_filename = results_filename + '_whole_gland'
+        results_filename += '_whole_gland'
     
     results_file = open(results_filename + '.txt', "w")
     results_file.write("================================== \n") 
@@ -349,18 +361,12 @@ def main():
         # ==================================================================
         # predict segmentation at the pre-processed resolution
         # ==================================================================
-        predicted_labels, normalized_image = predict_segmentation(subject_name,
-                                                                  image,
-                                                                  args.NORMALIZE)
+        predicted_labels, normalized_image = predict_segmentation(subject_name, image, args.NORMALIZE)
                 
         # ==================================================================
         # read the original segmentation mask
         # ==================================================================
-        image_orig, labels_orig = utils_data.load_testing_data_wo_preproc(test_dataset_name,
-                                                                          ids,
-                                                                          sub_num,
-                                                                          subject_name,
-                                                                          image_depth_ts)
+        image_orig, labels_orig = utils_data.load_testing_data_wo_preproc(test_dataset_name, ids, sub_num, subject_name, image_depth_ts)
 
         # USZ images and labels were rotated in the preprocessing script
         # So the predicted labels will also be rotated wrt GT
@@ -386,6 +392,8 @@ def main():
         # ==================================================================
         if args.NORMALIZE == 1:
             savepath = log_dir_tta + 'results/' + test_dataset_name + '_test_' + subject_name
+            if args.tta_method == 'AE':
+                savepath += args.stopping_criterion 
         else:
             if args.TRANSFER == 0:
                 savepath = log_dir_sd + 'results/' + test_dataset_name + '_test_' + subject_name
@@ -399,7 +407,7 @@ def main():
             predicted_labels_orig_res_and_size[predicted_labels_orig_res_and_size!=0] = 1
             labels_orig[labels_orig!=0] = 1
             nl = 2
-            savepath = savepath + '_whole_gland'
+            savepath += '_whole_gland'
         else:
             nl = nlabels
 

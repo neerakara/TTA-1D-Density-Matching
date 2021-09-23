@@ -489,3 +489,57 @@ def prepare_tensor_for_summary(img,
         V = tf.reshape(V, tf.stack((-1, tf.shape(img)[1], tf.shape(img)[2], 1))) # (1,224,224,1)
     
     return V
+
+# ================================================================
+# ================================================================
+def divide_vars_into_groups(all_vars, AEs = False):
+    
+    i2l_vars = []
+    normalization_vars = []
+    bn_vars = []
+    adapt_ax_vars = []
+    adapt_af_vars = []
+
+    if AEs == True:
+        ae_xn_vars = []
+        ae_y_vars = []
+        ae_f1_vars = []
+        ae_f2_vars = []
+        ae_f3_vars = []
+    
+    for v in all_vars:
+        
+        var_name = v.name   
+        
+        if AEs == True:
+            if 'self_sup_ae_xn' in var_name:
+                ae_xn_vars.append(v)
+            if 'self_sup_ae_y' in var_name:
+                ae_y_vars.append(v)
+            if 'self_sup_ae_f1' in var_name:
+                ae_f1_vars.append(v)
+            if 'self_sup_ae_f2' in var_name:
+                ae_f2_vars.append(v)
+            if 'self_sup_ae_f3' in var_name:
+                ae_f3_vars.append(v)
+
+        if 'image_normalizer' in var_name:
+            i2l_vars.append(v)
+            normalization_vars.append(v)
+        
+        if 'beta' in var_name or 'gamma' in var_name: # assumes to batch normalization layers in Ax and Af
+            bn_vars.append(v)
+        
+        if 'adaptAx' in var_name:
+            adapt_ax_vars.append(v)
+        
+        if 'adaptAf' in var_name:
+            adapt_af_vars.append(v)
+        
+        elif 'i2l_mapper' in var_name:
+            i2l_vars.append(v)
+
+    if AEs == True:
+        return i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars, ae_xn_vars, ae_y_vars, ae_f1_vars, ae_f2_vars, ae_f3_vars
+    else:
+        return i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars

@@ -176,7 +176,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # setting training flag to false (relevant for batch normalization layers)
         training_pl = tf.constant(False, dtype=tf.bool)
 
-        if args.TTA_VARS != 'NORM':
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
 
             # ================================================================
             # Insert a randomly initialized 1x1 'adaptor' even before the normalization module.
@@ -216,41 +216,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         features_level3_autoencoded = model.autoencode(features_level3, exp_config, tf.constant(False, dtype=tf.bool), 'f3')
         
         # ================================================================
-        # Divide the vars into segmentation network and normalization network
+        # Divide the vars into different groups
         # ================================================================
-        i2l_vars = []
-        normalization_vars = []
-        bn_vars = []
-        ae_xn_vars = []
-        ae_y_vars = []
-        ae_f1_vars = []
-        ae_f2_vars = []
-        ae_f3_vars = []
-        adapt_ax_vars = []
-        adapt_af_vars = []
-        for v in tf.global_variables():
-            var_name = v.name        
-            if 'image_normalizer' in var_name:
-                i2l_vars.append(v)
-                normalization_vars.append(v)
-            if 'beta' in var_name or 'gamma' in var_name:
-                bn_vars.append(v)
-            if 'self_sup_ae_xn' in var_name:
-                ae_xn_vars.append(v)
-            if 'self_sup_ae_y' in var_name:
-                ae_y_vars.append(v)
-            if 'self_sup_ae_f1' in var_name:
-                ae_f1_vars.append(v)
-            if 'self_sup_ae_f2' in var_name:
-                ae_f2_vars.append(v)
-            if 'self_sup_ae_f3' in var_name:
-                ae_f3_vars.append(v)
-            if 'adaptAx' in var_name:
-                adapt_ax_vars.append(v)
-            if 'adaptAf' in var_name:
-                adapt_af_vars.append(v)
-            elif 'i2l_mapper' in var_name:
-                i2l_vars.append(v)
+        i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars, ae_xn_vars, ae_y_vars, ae_f1_vars, ae_f2_vars, ae_f3_vars = model.divide_vars_into_groups(tf.global_variables(), AEs = True)
 
         if args.debug == 1:
             logging.info("Ax vars")

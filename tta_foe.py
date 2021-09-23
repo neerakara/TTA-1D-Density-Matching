@@ -261,27 +261,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
         
         # ================================================================
-        # Divide the vars into segmentation network and normalization network
+        # Divide the vars into different groups
         # ================================================================
-        i2l_vars = []
-        normalization_vars = []
-        bn_vars = []
-        adapt_ax_vars = []
-        adapt_af_vars = []
-        for v in tf.global_variables():
-            var_name = v.name   
-            logging.info(var_name)     
-            if 'image_normalizer' in var_name:
-                i2l_vars.append(v)
-                normalization_vars.append(v)
-            if 'beta' in var_name or 'gamma' in var_name: # assumes to batch normalization layers in Ax and Af
-                bn_vars.append(v)
-            if 'adaptAx' in var_name:
-                adapt_ax_vars.append(v)
-            if 'adaptAf' in var_name:
-                adapt_af_vars.append(v)
-            elif 'i2l_mapper' in var_name:
-                i2l_vars.append(v)
+        i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars = model.divide_vars_into_groups(tf.global_variables())
 
         if args.debug == 1:
             logging.info("Ax vars")
