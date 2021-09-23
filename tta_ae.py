@@ -60,7 +60,7 @@ parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # BN / NORM / AdaptAx / AdaptAxAf
 # which AEs
-parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
+parser.add_argument('--whichAEs', default = "xn_and_y") # xn / xn_and_y / xn_f1_f2_f3_y
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 8)
@@ -190,21 +190,30 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # ================================================================
             images_normalized, added_residual = model.normalize(images_adapted, exp_config, training_pl = tf.constant(False, dtype=tf.bool))
 
+            # ================================================================
+            # Build the graph that computes predictions from the inference model
+            # ================================================================
+            logits, softmax, preds, features_level1, features_level2, features_level3 = model.predict_i2l_with_adaptors(images_normalized,
+                                                                                                                        exp_config,
+                                                                                                                        training_pl = tf.constant(False, dtype=tf.bool),
+                                                                                                                        nlabels = nlabels,
+                                                                                                                        return_features = True)
+
         else: # Directly feed the input image to the normalization module
             # ================================================================
             # Insert a normalization module in front of the segmentation network
             # the normalization module is adapted for each test image
-            # ================================================================
+            # ================================================================ 
             images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = tf.constant(False, dtype=tf.bool))
-        
-        # ================================================================
-        # Build the graph that computes predictions from the inference model
-        # ================================================================
-        logits, softmax, preds, features_level1, features_level2, features_level3 = model.predict_i2l_with_adaptors(images_normalized,
-                                                                                                                    exp_config,
-                                                                                                                    training_pl = tf.constant(False, dtype=tf.bool),
-                                                                                                                    nlabels = nlabels,
-                                                                                                                    return_features = True)
+
+            # ================================================================
+            # Build the graph that computes predictions from the inference model
+            # ================================================================        
+            logits, softmax, preds, features_level1, features_level2, features_level3 = model.predict_i2l(images_normalized,
+                                                                                                          exp_config,
+                                                                                                          training_pl = training_pl,
+                                                                                                          nlabels = nlabels,
+                                                                                                          return_features = True)
 
         # ======================
         # autoencoder on the space of normalized images and on the softmax outputs
@@ -234,23 +243,24 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # ops for initializing feature adaptors to identity
         # ================================================================
-        wf1 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A1/kernel:0"][0]
-        wf2 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A2/kernel:0"][0]
-        wf3 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A3/kernel:0"][0]
-        if args.debug == 1:
-            logging.info("Weight matrices of feature adaptors.. ")
-            logging.info(wf1)
-            logging.info(wf2)
-            logging.info(wf3)
-        wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
-        wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
-        wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
-        init_wf1_op = wf1.assign(wf1_init_pl)
-        init_wf2_op = wf2.assign(wf2_init_pl)
-        init_wf3_op = wf3.assign(wf3_init_pl)
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            wf1 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A1/kernel:0"][0]
+            wf2 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A2/kernel:0"][0]
+            wf3 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A3/kernel:0"][0]
+            if args.debug == 1:
+                logging.info("Weight matrices of feature adaptors.. ")
+                logging.info(wf1)
+                logging.info(wf2)
+                logging.info(wf3)
+            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
+            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
+            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
+            init_wf1_op = wf1.assign(wf1_init_pl)
+            init_wf2_op = wf2.assign(wf2_init_pl)
+            init_wf3_op = wf3.assign(wf3_init_pl)
 
-        # op for optimizing Ax to be near identity
-        init_ax_op = tf.train.AdamOptimizer(learning_rate = 0.001).minimize(tf.reduce_mean(tf.square(images_adapted - images_pl)), var_list=adapt_ax_vars)
+            # op for optimizing Ax to be near identity
+            init_ax_op = tf.train.AdamOptimizer(learning_rate = 0.001).minimize(tf.reduce_mean(tf.square(images_adapted - images_pl)), var_list=adapt_ax_vars)
 
         # ================================================================
         # Set TTA vars
@@ -283,23 +293,29 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # TTA loss - spectral norm of the feature adaptors
         # ================================================================
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            # wf1_ = tf.transpose(wf1[0,0,:,:]) * wf1[0,0,:,:] - tf.eye(16)
+            # loss_spectral_norm_wf1_op = tf.linalg.svd(wf1_, compute_uv=False)[...,0]
+            # wf2_ = tf.transpose(wf2[0,0,:,:]) * wf2[0,0,:,:] - tf.eye(32)
+            # loss_spectral_norm_wf2_op = tf.linalg.svd(wf2_, compute_uv=False)[...,0]
+            # wf3_ = tf.transpose(wf3[0,0,:,:]) * wf3[0,0,:,:] - tf.eye(64)
+            # loss_spectral_norm_wf3_op = tf.linalg.svd(wf3_, compute_uv=False)[...,0]
 
-        # wf1_ = tf.transpose(wf1[0,0,:,:]) * wf1[0,0,:,:] - tf.eye(16)
-        # loss_spectral_norm_wf1_op = tf.linalg.svd(wf1_, compute_uv=False)[...,0]
-        # wf2_ = tf.transpose(wf2[0,0,:,:]) * wf2[0,0,:,:] - tf.eye(32)
-        # loss_spectral_norm_wf2_op = tf.linalg.svd(wf2_, compute_uv=False)[...,0]
-        # wf3_ = tf.transpose(wf3[0,0,:,:]) * wf3[0,0,:,:] - tf.eye(64)
-        # loss_spectral_norm_wf3_op = tf.linalg.svd(wf3_, compute_uv=False)[...,0]
+            loss_spectral_norm_wf1_op = model.spectral_loss(wf1)
+            loss_spectral_norm_wf2_op = model.spectral_loss(wf2)
+            loss_spectral_norm_wf3_op = model.spectral_loss(wf3)
+            loss_spectral_norm_op = loss_spectral_norm_wf1_op + loss_spectral_norm_wf2_op + loss_spectral_norm_wf3_op
 
-        loss_spectral_norm_wf1_op = model.spectral_loss(wf1)
-        loss_spectral_norm_wf2_op = model.spectral_loss(wf2)
-        loss_spectral_norm_wf3_op = model.spectral_loss(wf3)
-        loss_spectral_norm_op = loss_spectral_norm_wf1_op + loss_spectral_norm_wf2_op + loss_spectral_norm_wf3_op
+            # ================================================================
+            # Total TTA loss
+            # ================================================================
+            loss_op = loss_ae_op + args.lambda_spectral * loss_spectral_norm_op
 
-        # ================================================================
-        # Total TTA loss
-        # ================================================================
-        loss_op = loss_ae_op + args.lambda_spectral * loss_spectral_norm_op
+        else:
+            # ================================================================
+            # Total TTA loss
+            # ================================================================
+            loss_op = loss_ae_op
                 
         # ================================================================
         # add losses to tensorboard
@@ -311,7 +327,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         tf.summary.scalar('loss/TTA__F1_', loss_op_f1)
         tf.summary.scalar('loss/TTA__F2_', loss_op_f2)
         tf.summary.scalar('loss/TTA__F3_', loss_op_f3)
-        tf.summary.scalar('loss/TTA_spectral_norm', loss_spectral_norm_op)
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            tf.summary.scalar('loss/TTA_spectral_norm', loss_spectral_norm_op)
         summary_during_tta = tf.summary.merge_all()
 
         # ================================================================
@@ -394,7 +411,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # tta savers (we need multiple of these to save according to different stopping criteria)
         saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # general saver after every few epochs
         saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves the weights when the exponential moving average of the loss is the lowest
-        saver_tta_best_first_ten_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 10 epochs 
+        saver_tta_best_first_10_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 10 epochs 
+        saver_tta_best_first_50_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 50 epochs 
+        saver_tta_best_first_100_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 100 epochs 
         saver_tta_sos = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves weights at the iteration when the loss increases as compared to the previous step
                 
         # ================================================================
@@ -406,21 +425,23 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # Run the Op to initialize the variables.
         # ================================================================
         sess.run(init_ops)
-        sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(16), axis=0), axis=0)})
-        sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
-        sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
 
-        if args.debug == 1:
-            logging.info('Initialized feature adaptors..')   
-            logging.info(wf1.eval(session=sess))
-            logging.info(wf2.eval(session=sess))
-            logging.info(wf3.eval(session=sess))
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(16), axis=0), axis=0)})
+            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
+            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
 
-        if args.train_Ax_first == 1:
-            logging.info('Training Ax to be the identity mapping..')
-            for _ in range(100):
-                sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
-            logging.info('Done.. now doing TTA ops from here..')
+            if args.debug == 1:
+                logging.info('Initialized feature adaptors..')   
+                logging.info(wf1.eval(session=sess))
+                logging.info(wf2.eval(session=sess))
+                logging.info(wf3.eval(session=sess))
+
+            if args.train_Ax_first == 1:
+                logging.info('Training Ax to be the identity mapping..')
+                for _ in range(100):
+                    sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
+                logging.info('Done.. now doing TTA ops from here..')
         
         # ================================================================
         # Restore the normalization + segmentation network parameters
@@ -492,10 +513,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             else:
                 # pad zeros to have complete batches
                 extra_zeros_needed = b_i + b_size - test_image.shape[0]
-                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...],
-                                        np.zeros((extra_zeros_needed,
-                                                  test_image.shape[1],
-                                                  test_image.shape[2]))), axis=0), axis=-1)
+                batch = np.expand_dims(np.concatenate((test_image[b_i:, ...], np.zeros((extra_zeros_needed, test_image.shape[1], test_image.shape[2]))), axis=0), axis=-1)
             label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
         label_predicted = np.squeeze(np.array(label_predicted)).astype(float)  
 
@@ -603,7 +621,23 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 # ===========================
                 if step < 11:
                     best_file = os.path.join(log_dir_tta, 'models/best_loss_in_first_10_epochs.ckpt')
-                    saver_tta_best_first_ten_epochs.save(sess, best_file, global_step=step)
+                    saver_tta_best_first_10_epochs.save(sess, best_file, global_step=step)
+                    logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
+
+                # ===========================
+                # save the best model in the first 50 iterations.
+                # ===========================
+                if step < 51:
+                    best_file = os.path.join(log_dir_tta, 'models/best_loss_in_first_50_epochs.ckpt')
+                    saver_tta_best_first_50_epochs.save(sess, best_file, global_step=step)
+                    logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
+
+                # ===========================
+                # save the best model in the first 100 iterations.
+                # ===========================
+                if step < 101:
+                    best_file = os.path.join(log_dir_tta, 'models/best_loss_in_first_100_epochs.ckpt')
+                    saver_tta_best_first_100_epochs.save(sess, best_file, global_step=step)
                     logging.info('Found new best score (%f) at step %d -  Saving model.' % (best_loss, step))
 
             # ===========================
@@ -616,7 +650,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 model_sos_saved = True
             loss_previous_step = loss_this_step
 
-            if step == 10 and model_sos_saved == False:
+            if step == 100 and model_sos_saved == False:
                 best_file = os.path.join(log_dir_tta, 'models/best_loss_sos.ckpt')
                 saver_tta_sos.save(sess, best_file, global_step=step)
                 logging.info('Loss continuously decreased for the first %d epochs, saving current model as the SOS model.' % (step))
@@ -640,10 +674,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 else:
                     # pad zeros to have complete batches
                     extra_zeros_needed = b_i + b_size - test_image.shape[0]
-                    batch = np.expand_dims(np.concatenate((test_image[b_i:, ...],
-                                           np.zeros((extra_zeros_needed,
-                                                     test_image.shape[1],
-                                                     test_image.shape[2]))), axis=0), axis=-1)
+                    batch = np.expand_dims(np.concatenate((test_image[b_i:, ...], np.zeros((extra_zeros_needed, test_image.shape[1], test_image.shape[2]))), axis=0), axis=-1)
                 label_predicted.append(sess.run(preds, feed_dict={images_pl: batch}))
                 image_normalized.append(sess.run(images_normalized, feed_dict={images_pl: batch}))
 
@@ -651,15 +682,8 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             image_normalized = np.squeeze(np.array(image_normalized)).astype(float)  
 
             if b_size > 1 and test_image.shape[0] > b_size:
-                label_predicted = np.reshape(label_predicted,
-                                            (label_predicted.shape[0]*label_predicted.shape[1],
-                                            label_predicted.shape[2],
-                                            label_predicted.shape[3]))
-                
-                image_normalized = np.reshape(image_normalized,
-                                             (image_normalized.shape[0]*image_normalized.shape[1],
-                                             image_normalized.shape[2],
-                                             image_normalized.shape[3]))
+                label_predicted = np.reshape(label_predicted, (label_predicted.shape[0]*label_predicted.shape[1], label_predicted.shape[2], label_predicted.shape[3]))
+                image_normalized = np.reshape(image_normalized, (image_normalized.shape[0]*image_normalized.shape[1], image_normalized.shape[2], image_normalized.shape[3]))
                 
             label_predicted = label_predicted[:test_image.shape[0], ...]
             image_normalized = image_normalized[:test_image.shape[0], ...]

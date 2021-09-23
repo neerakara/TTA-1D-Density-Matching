@@ -315,10 +315,11 @@ def make_tta_exp_name(args, tta_method = 'FoE'):
         exp_str = args.tta_string + args.tta_method + '/r' + str(args.ae_runnum) + '/'
         exp_str = exp_str + 'subjectwise/AEs_' + str(args.whichAEs) + '/'
         exp_str = exp_str + 'lambda_spectral_' + str(args.lambda_spectral) + '_vars' + args.TTA_VARS 
-        if args.instance_norm_in_Ax == 0:
-            exp_str = exp_str + '_no_IN_in_Ax'
-        if args.train_Ax_first == 0:
-            exp_str = exp_str + '_random_init_Ax'
+        if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+            if args.instance_norm_in_Ax == 0:
+                exp_str = exp_str + '_no_IN_in_Ax'
+            if args.train_Ax_first == 0:
+                exp_str = exp_str + '_random_init_Ax'
         exp_str = exp_str + '/BS' + str(args.b_size) # TTA batch size
         exp_str = exp_str + '_accumgrad' + str(args.accum_gradients) # TTA accumulate gradients or not
         exp_str = exp_str + '_LR' + str(args.tta_learning_rate) # TTA Learning Rate
