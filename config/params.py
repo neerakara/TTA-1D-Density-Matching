@@ -100,7 +100,7 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # number of TTA iterations
         # =================================
-        tta_max_steps = 251 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_max_steps = 201 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
         tta_vis_freq = 10
 
@@ -167,7 +167,7 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # number of TTA iterations
         # =================================
-        tta_max_steps = 301 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
         tta_vis_freq = 10
 
@@ -202,7 +202,7 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # number of TTA iterations
         # =================================
-        tta_max_steps = 301 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
         tta_vis_freq = 10
 
@@ -237,7 +237,7 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # number of TTA iterations
         # =================================
-        tta_max_steps = 301 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
         tta_vis_freq = 10
 
@@ -271,7 +271,7 @@ def make_tta_exp_name(args, tta_method = 'FoE'):
         exp_str = args.tta_string + args.PDF_TYPE # Gaussian / KDE / KDE_PCA
         
         # loss function
-        if args.PDF_TYPE == 'KDE' or args.PDF_TYPE == 'KDE_PCA':
+        if args.PDF_TYPE == 'KDE':
             exp_str = exp_str + '/Alpha' + str(args.KDE_ALPHA) # If KDE is used, what's the smoothness parameter?
         
         exp_str = exp_str + '/' + args.LOSS_TYPE # KL / 

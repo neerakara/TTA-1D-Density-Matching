@@ -118,10 +118,7 @@ whole_gland_results = dataset_params[5]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-if args.train_dataset in ['UMC', 'NUHS', 'site1', 'site2', 'site3', 'site4']:
-    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-else:
-    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # ==================================

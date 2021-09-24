@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
 # ====================
 parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
-parser.add_argument('--tr_run_number', type = int, default = 2) # 1 / 
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # parse arguments
@@ -397,10 +397,8 @@ def iterate_minibatches(images,
             # ===========================    
             # doing data aug both during training as well as during evaluation on the validation set (used for model selection)
             # ===========================             
-            if args.train_dataset in ['HVHD', 'CSF', 'UHE']: 
-                do_rot90 = True # 90 degree rotation for cardiac images as the orientation is fixed for all other anatomies.
-            else:
-                do_rot90 = False
+            # 90 degree rotation for cardiac images as the orientation is fixed for all other anatomies.
+            do_rot90 = args.train_dataset in ['HVHD', 'CSF', 'UHE']
             x, y = utils.do_data_augmentation(images = x,
                                               labels = y,
                                               data_aug_ratio = exp_config.da_ratio,
