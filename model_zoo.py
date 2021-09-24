@@ -67,14 +67,8 @@ def unet2D_i2l_with_adaptors(images,
         conv1_1 = layers.conv2D_layer_bn(x=images, name='conv1_1', num_filters=n1, training = training_pl)
         conv1_2 = layers.conv2D_layer_bn(x=conv1_1, name='conv1_2', num_filters=n1, training = training_pl)
         pool1 = layers.max_pool_layer2d(conv1_2)
-
-        # ====================================
-        # Feature adaptor 1
-        # ====================================
-        pool1_adapted = tf.layers.conv2d(inputs=pool1, filters=n1, kernel_size=1, padding='SAME', name='adaptAf_A1', use_bias=True, activation=tf.identity,
-                                         kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
-        # These weights will be initialized to identity mappings in the TTA file.
-        # Can't figure out how to do this directly here..
+        # Feature adaptor 1 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        pool1_adapted = tf.layers.conv2d(inputs=pool1, filters=n1, kernel_size=1, padding='SAME', name='adaptAf_A1', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
 
         # ====================================
         # 2nd Conv block
@@ -82,14 +76,8 @@ def unet2D_i2l_with_adaptors(images,
         conv2_1 = layers.conv2D_layer_bn(x=pool1_adapted, name='conv2_1', num_filters=n2, training = training_pl)
         conv2_2 = layers.conv2D_layer_bn(x=conv2_1, name='conv2_2', num_filters=n2, training = training_pl)
         pool2 = layers.max_pool_layer2d(conv2_2)
-    
-        # ====================================
-        # Feature adaptor 2
-        # ====================================
-        pool2_adapted = tf.layers.conv2d(inputs=pool2, filters=n2, kernel_size=1, padding='SAME', name='adaptAf_A2', use_bias=True, activation=tf.identity,
-                                         kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
-        # These weights will be initialized to identity mappings in the TTA file.
-        # Can't figure out how to do this directly here..
+        # Feature adaptor 2 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        pool2_adapted = tf.layers.conv2d(inputs=pool2, filters=n2, kernel_size=1, padding='SAME', name='adaptAf_A2', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
 
         # ====================================
         # 3rd Conv block
@@ -97,14 +85,8 @@ def unet2D_i2l_with_adaptors(images,
         conv3_1 = layers.conv2D_layer_bn(x=pool2_adapted, name='conv3_1', num_filters=n3, training = training_pl)
         conv3_2 = layers.conv2D_layer_bn(x=conv3_1, name='conv3_2', num_filters=n3, training = training_pl)
         pool3 = layers.max_pool_layer2d(conv3_1)
-
-        # ====================================
-        # Feature adaptor 3
-        # ====================================
-        pool3_adapted = tf.layers.conv2d(inputs=pool3, filters=n3, kernel_size=1, padding='SAME', name='adaptAf_A3', use_bias=True, activation=tf.identity,
-                                         kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
-        # These weights will be initialized to identity mappings in the TTA file.
-        # Can't figure out how to do this directly here..
+        # Feature adaptor 3 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        pool3_adapted = tf.layers.conv2d(inputs=pool3, filters=n3, kernel_size=1, padding='SAME', name='adaptAf_A3', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
     
         # ====================================
         # 4th Conv block and decoder blocks
@@ -150,6 +132,90 @@ def unet2D_i2l_with_adaptors(images,
         return pred_logits
     else:
         return pred_logits, tf.concat([pool1_adapted, deconv2], axis=-1), tf.concat([pool2_adapted, deconv3], axis=-1), tf.concat([pool3_adapted, conv4_2], axis=-1)
+
+# ======================================================================
+# For TTA-AE (Yufan He, MedIA 2021)
+# ======================================================================
+def unet2D_i2l_with_adaptors_new(images,
+                                 nlabels,
+                                 training_pl,
+                                 return_features=False):
+
+    n0 = 16
+    n1, n2, n3, n4 = 1*n0, 2*n0, 4*n0, 8*n0
+    
+    # ====================================
+    # 1st Conv block - two conv layers, followed by max-pooling
+    # ====================================
+    with tf.variable_scope('i2l_mapper') as scope:
+        conv1_1 = layers.conv2D_layer_bn(x=images, name='conv1_1', num_filters=n1, training = training_pl)
+        conv1_2 = layers.conv2D_layer_bn(x=conv1_1, name='conv1_2', num_filters=n1, training = training_pl)
+        pool1 = layers.max_pool_layer2d(conv1_2)
+
+        # ====================================
+        # 2nd Conv block
+        # ====================================
+        conv2_1 = layers.conv2D_layer_bn(x=pool1, name='conv2_1', num_filters=n2, training = training_pl)
+        conv2_2 = layers.conv2D_layer_bn(x=conv2_1, name='conv2_2', num_filters=n2, training = training_pl)
+        # Feature adaptor 1 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        conv2_2_adapted = tf.layers.conv2d(inputs=conv2_2, filters=n2, kernel_size=1, padding='SAME', name='adaptAf_A1', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        pool2 = layers.max_pool_layer2d(conv2_2_adapted)
+
+        # ====================================
+        # 3rd Conv block
+        # ====================================
+        conv3_1 = layers.conv2D_layer_bn(x=pool2, name='conv3_1', num_filters=n3, training = training_pl)
+        conv3_2 = layers.conv2D_layer_bn(x=conv3_1, name='conv3_2', num_filters=n3, training = training_pl)
+        # Feature adaptor 2 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        conv3_2_adapted = tf.layers.conv2d(inputs=conv3_2, filters=n3, kernel_size=1, padding='SAME', name='adaptAf_A2', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        pool3 = layers.max_pool_layer2d(conv3_2_adapted)
+    
+        # ====================================
+        # 4th Conv block and decoder blocks
+        # ====================================
+        conv4_1 = layers.conv2D_layer_bn(x=pool3, name='conv4_1', num_filters=n4, training = training_pl)
+        # Feature adaptor 3 (These weights will be initialized to identity mappings in the TTA file. Can't figure out how to do this directly here..)
+        conv4_1_adapted = tf.layers.conv2d(inputs=conv4_1, filters=n4, kernel_size=1, padding='SAME', name='adaptAf_A3', use_bias=True, activation=tf.identity, kernel_initializer = tf.initializers.random_uniform(minval=1.0, maxval=1.0))
+        conv4_2 = layers.conv2D_layer_bn(x=conv4_1_adapted, name='conv4_2', num_filters=n4, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv3 = layers.bilinear_upsample2D(conv4_2, size = (tf.shape(conv3_2)[1],tf.shape(conv3_2)[2]), name='upconv3')
+        concat3 = tf.concat([deconv3, conv3_2_adapted], axis=-1)        
+        conv5_1 = layers.conv2D_layer_bn(x=concat3, name='conv5_1', num_filters=n3, training = training_pl)
+        conv5_2 = layers.conv2D_layer_bn(x=conv5_1, name='conv5_2', num_filters=n3, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv2 = layers.bilinear_upsample2D(conv5_2, size = (tf.shape(conv2_2)[1],tf.shape(conv2_2)[2]), name='upconv2')
+        concat2 = tf.concat([deconv2, conv2_2_adapted], axis=-1)        
+        conv6_1 = layers.conv2D_layer_bn(x=concat2, name='conv6_1', num_filters=n2, training = training_pl)
+        conv6_2 = layers.conv2D_layer_bn(x=conv6_1, name='conv6_2', num_filters=n2, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv1 = layers.bilinear_upsample2D(conv6_2, size = (tf.shape(conv1_2)[1],tf.shape(conv1_2)[2]), name='upconv1')
+        concat1 = tf.concat([deconv1, conv1_2], axis=-1)        
+        conv7_1 = layers.conv2D_layer_bn(x=concat1, name='conv7_1', num_filters=n1, training = training_pl)
+        conv7_2 = layers.conv2D_layer_bn(x=conv7_1, name='conv7_2', num_filters=n1, training = training_pl)
+    
+        # ====================================
+        # Final conv layer - without batch normalization or activation
+        # ====================================
+        pred_logits = layers.conv2D_layer(x=conv7_2, name='pred', num_filters=nlabels, kernel_size=1)
+
+        # ====================================
+        # convert the logits to segmentation probabilities
+        # ====================================
+        pred_seg_soft = tf.nn.softmax(pred_logits, name='pred_seg_soft')
+
+    if return_features == False:
+        return pred_logits
+    else:
+        return pred_logits, tf.concat([conv2_2_adapted, conv6_2], axis=-1), tf.concat([conv3_2_adapted, conv5_2], axis=-1), tf.concat([conv4_1_adapted, conv4_2], axis=-1)
 
 # ======================================================================
 # normalization network
@@ -254,6 +320,7 @@ def unet2D_i2l(images,
         conv3_1 = layers.conv2D_layer_bn(x=pool2, name='conv3_1', num_filters=n3, training = training_pl)
         conv3_2 = layers.conv2D_layer_bn(x=conv3_1, name='conv3_2', num_filters=n3, training = training_pl)
         pool3 = layers.max_pool_layer2d(conv3_1)
+        # !!! pool3 should ideally have gotten as input conv3_2, instead it is getting conv3_1 !!!
     
         # ====================================
         # 4th Conv block
@@ -299,6 +366,93 @@ def unet2D_i2l(images,
         return pred_logits
     else:
         return pred_logits, tf.concat([pool1, deconv2], axis=-1), tf.concat([pool2, deconv3], axis=-1), tf.concat([pool3, conv4_2], axis=-1)
+
+# ======================================================================
+# 2D Unet for mapping from images to segmentation labels
+# Fixes two bugs as compared to the earlier unet2D_i2l:
+# 1. conv3_2 goes into pool3, instead of conv3_1 as was happening before
+# 2. features after conv are returned to be fed into AEs (for TTA-AE) instead of features after pool.
+# This is more similar to what is done in He 2021.
+# ======================================================================
+def unet2D_i2l_new(images,
+                   nlabels,
+                   training_pl,
+                   scope_reuse=False,
+                   return_features=False): 
+
+    n0 = 16
+    n1, n2, n3, n4 = 1*n0, 2*n0, 4*n0, 8*n0
+    
+    with tf.variable_scope('i2l_mapper') as scope:
+        
+        if scope_reuse:
+            scope.reuse_variables()
+        
+        # ====================================
+        # 1st Conv block - two conv layers, followed by max-pooling
+        # ====================================
+        conv1_1 = layers.conv2D_layer_bn(x=images, name='conv1_1', num_filters=n1, training = training_pl)
+        conv1_2 = layers.conv2D_layer_bn(x=conv1_1, name='conv1_2', num_filters=n1, training = training_pl)
+        pool1 = layers.max_pool_layer2d(conv1_2)
+    
+        # ====================================
+        # 2nd Conv block
+        # ====================================
+        conv2_1 = layers.conv2D_layer_bn(x=pool1, name='conv2_1', num_filters=n2, training = training_pl)
+        conv2_2 = layers.conv2D_layer_bn(x=conv2_1, name='conv2_2', num_filters=n2, training = training_pl)
+        pool2 = layers.max_pool_layer2d(conv2_2)
+    
+        # ====================================
+        # 3rd Conv block
+        # ====================================
+        conv3_1 = layers.conv2D_layer_bn(x=pool2, name='conv3_1', num_filters=n3, training = training_pl)
+        conv3_2 = layers.conv2D_layer_bn(x=conv3_1, name='conv3_2', num_filters=n3, training = training_pl)
+        pool3 = layers.max_pool_layer2d(conv3_2)
+    
+        # ====================================
+        # 4th Conv block
+        # ====================================
+        conv4_1 = layers.conv2D_layer_bn(x=pool3, name='conv4_1', num_filters=n4, training = training_pl)
+        conv4_2 = layers.conv2D_layer_bn(x=conv4_1, name='conv4_2', num_filters=n4, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv3 = layers.bilinear_upsample2D(conv4_2, size = (tf.shape(conv3_2)[1],tf.shape(conv3_2)[2]), name='upconv3')
+        concat3 = tf.concat([deconv3, conv3_2], axis=-1)        
+        conv5_1 = layers.conv2D_layer_bn(x=concat3, name='conv5_1', num_filters=n3, training = training_pl)
+        conv5_2 = layers.conv2D_layer_bn(x=conv5_1, name='conv5_2', num_filters=n3, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv2 = layers.bilinear_upsample2D(conv5_2, size = (tf.shape(conv2_2)[1],tf.shape(conv2_2)[2]), name='upconv2')
+        concat2 = tf.concat([deconv2, conv2_2], axis=-1)        
+        conv6_1 = layers.conv2D_layer_bn(x=concat2, name='conv6_1', num_filters=n2, training = training_pl)
+        conv6_2 = layers.conv2D_layer_bn(x=conv6_1, name='conv6_2', num_filters=n2, training = training_pl)
+    
+        # ====================================
+        # Upsampling via bilinear upsampling, concatenation (skip connection), followed by 2 conv layers
+        # ====================================
+        deconv1 = layers.bilinear_upsample2D(conv6_2, size = (tf.shape(conv1_2)[1],tf.shape(conv1_2)[2]), name='upconv1')
+        concat1 = tf.concat([deconv1, conv1_2], axis=-1)        
+        conv7_1 = layers.conv2D_layer_bn(x=concat1, name='conv7_1', num_filters=n1, training = training_pl)
+        conv7_2 = layers.conv2D_layer_bn(x=conv7_1, name='conv7_2', num_filters=n1, training = training_pl)
+    
+        # ====================================
+        # Final conv layer - without batch normalization or activation
+        # ====================================
+        pred_logits = layers.conv2D_layer(x=conv7_2, name='pred', num_filters=nlabels, kernel_size=1)
+
+        # ====================================
+        # convert the logits to segmentation probabilities
+        # ====================================
+        pred_seg_soft = tf.nn.softmax(pred_logits, name='pred_seg_soft')
+
+    if return_features == False:
+        return pred_logits
+    else:
+        return pred_logits, tf.concat([conv2_2, conv6_2], axis=-1), tf.concat([conv3_2, conv5_2], axis=-1), tf.concat([conv4_1, conv4_2], axis=-1)
 
 # ======================================================================
 # 2D autoencoder self supervised AUTOENCODER
