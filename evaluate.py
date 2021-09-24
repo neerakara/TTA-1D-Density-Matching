@@ -45,13 +45,13 @@ parser.add_argument('--tl_runnum', type = int, default = 1) # 1 / 2 / 3
 # ====================
 # TTA vars
 # ====================
-parser.add_argument('--TTA_VARS', default = "NORM") # Which vars to adapt? - BN / NORM / AdaptAx / AdaptAxAf
+parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # Which vars to adapt? - BN / NORM / AdaptAx / AdaptAxAf
 
 # ====================
 # TTA method
 # ====================
 parser.add_argument('--tta_string', default = "tta/")
-parser.add_argument('--tta_method', default = "FoE") # FoE / entropy_min / AE
+parser.add_argument('--tta_method', default = "AE") # FoE / entropy_min / AE
 
 # ====================
 # options for TTA-FoE
@@ -80,7 +80,7 @@ parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 # ====================
 parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2 
 # which AEs
-parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_and_y / xn_f1_f2_f3_y
+parser.add_argument('--whichAEs', default = "xn_and_y") # xn / xn_and_y / xn_f1_f2_f3_y
 # weight of spectral norm loss compared to the AE recon loss
 parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.0
 # whether to train Ax first or not
@@ -89,7 +89,7 @@ parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
 # During TTA, accumulate gradients over the whole volume or not?
 parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
 # Which model to use for evaluation
-parser.add_argument('--stopping_criterion', default = 'best_loss') # best_loss / best_loss_sos
+parser.add_argument('--stopping_criterion', default = 'best_loss') # best_loss (best_loss_in_all_epochs) / best_loss_in_first_10_epochs / best_loss_in_first_50_epochs / best_loss_in_first_100_epochs
 
 # ====================
 # Optimization options
@@ -97,7 +97,7 @@ parser.add_argument('--stopping_criterion', default = 'best_loss') # best_loss /
 # Batch settings (for cardiac and spine, this needs to set to 8 as volumes there contain less than 16 slices)
 parser.add_argument('--b_size', type = int, default = 8)
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 0.00001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 

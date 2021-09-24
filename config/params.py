@@ -14,7 +14,7 @@ norm_batch_norm = False
 # ====================================================
 # settings of the i2l mapper 
 # ====================================================
-model_handle_i2l = model_zoo.unet2D_i2l
+model_handle_i2l = model_zoo.unet2D_i2l_new
 
 # ====================================================
 # self-supervised helper networks
@@ -23,23 +23,22 @@ model_handle_self_sup_ae = model_zoo.self_sup_autoencoder_like_yufan # model_zoo
 model_handle_self_sup_vae = model_zoo.self_sup_variational_autoencoder
 model_handle_self_sup_dae = model_zoo.self_sup_denoising_autoencoder_3D
 model_handle_adaptorAx = model_zoo.adaptor_Ax
-model_handle_i2l_with_adaptors = model_zoo.unet2D_i2l_with_adaptors
+model_handle_i2l_with_adaptors = model_zoo.unet2D_i2l_with_adaptors_new
 
 # ======================================================================
 # training settings
 # ======================================================================
 batch_size = 16
-learning_rate = 1e-3
+learning_rate_tr = 1e-3
 learning_rate_tl = 1e-4
 optimizer_handle = tf.train.AdamOptimizer
 loss_type = 'dice'
-continue_run = False
 debug = False
 
 # ======================================================================
 # max steps and frequencies for base network trainings from scratch
 # ======================================================================
-max_steps = 30001
+max_steps_tr = 30001 # initial training on SD
 max_steps_tl = 5001
 max_steps_ae = 25001
 train_eval_frequency = 1000

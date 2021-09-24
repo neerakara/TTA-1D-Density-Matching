@@ -9,8 +9,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 # project dirs
 # ==================================================================
-tensorboard_root = '/cluster/work/cvl/nkarani/tb/projects/dg_seg/methods/tta_abn/v1/'
-project_root = '/cluster/work/cvl/nkarani/projects/dg_seg/methods/tta_abn/v1/'
+tensorboard_root = '/cluster/work/cvl/nkarani/tb/projects/dg_seg/methods/tta_abn/v2/'
+project_root = '/cluster/work/cvl/nkarani/projects/dg_seg/methods/tta_abn/v2/'
 data_root = '/cluster/work/cvl/nkarani/data/preprocessed/segmentation/'
 
 # ==================================================================
