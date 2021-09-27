@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
+parser.add_argument('--da_ratio', type = float, default = 0.0) # 0.0 / 0.25
 
 # ====================
 # Test dataset 
@@ -118,7 +119,10 @@ whole_gland_results = dataset_params[5]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+if args.da_ratio == 0.0:
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_no_da_r' + str(args.tr_run_number) + '/i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # ==================================
@@ -263,7 +267,13 @@ def rescale_and_crop(arr, px, py, nx, ny, order_interpolation, num_rotations):
         # rotate the labels back to the original orientation
         # ============            
         arr2d_rotated = np.rot90(np.squeeze(arr[zz, :, :]), k=num_rotations)
-        arr2d_rescaled = rescale(arr2d_rotated, scale_vector, order = order_interpolation, preserve_range = True, multichannel = False, mode = 'constant', anti_aliasing = False)
+        arr2d_rescaled = rescale(arr2d_rotated,
+                                 scale_vector,
+                                 order = order_interpolation,
+                                 preserve_range = True,
+                                 multichannel = False,
+                                 mode = 'constant',
+                                 anti_aliasing = False)
         arr2d_rescaled_cropped = utils.crop_or_pad_slice_to_size(arr2d_rescaled, nx, ny)
         arr_list.append(arr2d_rescaled_cropped)
     arr_orig_res_and_size = np.array(arr_list)

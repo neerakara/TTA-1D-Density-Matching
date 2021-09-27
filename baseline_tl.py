@@ -42,6 +42,9 @@ parser.add_argument('--TL_VARS', default = "ALL") # BN / NORM / ALL
 # TL run number
 parser.add_argument('--tl_runnum', type = int, default = 1) # 1 / 2 / 3
 
+# data augmentation ratio
+parser.add_argument('--da_ratio', type = float, default = 0.25) # 0.0 / 0.25
+
 # parse arguments
 args = parser.parse_args()
 
@@ -443,7 +446,7 @@ def iterate_minibatches(images,
         # ===========================    
         # data augmentation (contrast changes + random elastic deformations)
         # ===========================      
-        if exp_config.da_ratio > 0:
+        if args.da_ratio > 0:
 
             # ===========================    
             # doing data aug both during training as well as during evaluation on the validation set (used for model selection)
@@ -451,7 +454,7 @@ def iterate_minibatches(images,
             do_rot90 = args.train_dataset in ['HVHD', 'CSF', 'UHE']
             x, y = utils.do_data_augmentation(images = x,
                                               labels = y,
-                                              data_aug_ratio = exp_config.da_ratio,
+                                              data_aug_ratio = args.da_ratio,
                                               sigma = exp_config.sigma,
                                               alpha = exp_config.alpha,
                                               trans_min = exp_config.trans_min,

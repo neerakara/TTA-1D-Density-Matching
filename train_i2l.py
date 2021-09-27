@@ -25,6 +25,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
+parser.add_argument('--da_ratio', type = float, default = 0.0) # 0.0 / 0.25
 
 # parse arguments
 args = parser.parse_args()
@@ -40,7 +41,10 @@ target_resolution = dataset_params[2]
 # ==================================================================
 # setup logging
 # ==================================================================
-expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/i2i2l/'
+if args.da_ratio == 0.0:
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_no_da_r' + str(args.tr_run_number) + '/i2i2l/'
+else:
+    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/i2i2l/'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 log_dir = os.path.join(sys_config.project_root, 'log_dir/' + expname_i2l)
 tensorboard_dir = os.path.join(sys_config.tensorboard_root, expname_i2l)
@@ -63,7 +67,10 @@ def run_training():
     # ============================   
     logging.info('============================================================')
     logging.info('Loading data...')
-    loaded_tr_data = utils_data.load_training_data(args.train_dataset, image_size, target_resolution, args.tr_cv_fold_num)
+    loaded_tr_data = utils_data.load_training_data(args.train_dataset,
+                                                   image_size,
+                                                   target_resolution,
+                                                   args.tr_cv_fold_num)
     imtr = loaded_tr_data[0]
     gttr = loaded_tr_data[1]
     imvl = loaded_tr_data[9]
@@ -101,12 +108,17 @@ def run_training():
         # insert a normalization module in front of the segmentation network
         # the normalization module will be adapted for each test image
         # ================================================================
-        images_normalized, _ = model.normalize(images_pl, exp_config, training_pl)
+        images_normalized, _ = model.normalize(images_pl,
+                                               exp_config,
+                                               training_pl)
 
         # ================================================================
         # build the graph that computes predictions from the inference model
         # ================================================================
-        logits, _, _ = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
+        logits, _, _ = model.predict_i2l(images_normalized,
+                                         exp_config,
+                                         training_pl = training_pl,
+                                         nlabels = nlabels)
 
         print('shape of inputs: ', images_pl.shape) # (batch_size, 256, 256, 1)
         print('shape of logits: ', logits.shape) # (batch_size, 256, 256, nlabels)
@@ -121,7 +133,10 @@ def run_training():
         # ================================================================
         # add ops for calculation of the supervised training loss
         # ================================================================
-        loss_op = model.loss(logits, labels_pl, nlabels=nlabels, loss_type=exp_config.loss_type)        
+        loss_op = model.loss(logits,
+                             labels_pl,
+                             nlabels=nlabels,
+                             loss_type=exp_config.loss_type)        
         tf.summary.scalar('loss', loss_op)
         
         # ================================================================
@@ -129,13 +144,21 @@ def run_training():
         # Create different ops according to the variables that must be trained
         # ================================================================
         print('creating training op...')
-        train_op = model.training_step(loss_op, i2l_vars, exp_config.optimizer_handle, learning_rate_pl, update_bn_nontrainable_vars=True)
+        train_op = model.training_step(loss_op,
+                                       i2l_vars,
+                                       exp_config.optimizer_handle,
+                                       learning_rate_pl,
+                                       update_bn_nontrainable_vars=True)
 
         # ================================================================
         # add ops for model evaluation
         # ================================================================
         print('creating eval op...')
-        eval_loss = model.evaluation_i2l(logits, labels_pl, images_pl, nlabels = nlabels, loss_type = exp_config.loss_type)
+        eval_loss = model.evaluation_i2l(logits,
+                                         labels_pl,
+                                         images_pl,
+                                         nlabels = nlabels,
+                                         loss_type = exp_config.loss_type)
 
         # ================================================================
         # build the summary Tensor based on the TF collection of Summaries.
@@ -234,7 +257,10 @@ def run_training():
             # ================================================               
             # batches
             # ================================================            
-            for batch in iterate_minibatches(imtr, gttr, batch_size = exp_config.batch_size, train_or_eval = 'train'):
+            for batch in iterate_minibatches(imtr,
+                                             gttr,
+                                             batch_size = exp_config.batch_size,
+                                             train_or_eval = 'train'):
                 
                 start_time = time.time()
                 x, y = batch
@@ -249,7 +275,10 @@ def run_training():
                 # ===========================
                 # create the feed dict for this training iteration
                 # ===========================
-                feed_dict = {images_pl: x, labels_pl: y, learning_rate_pl: exp_config.learning_rate_tr, training_pl: True}
+                feed_dict = {images_pl: x,
+                             labels_pl: y,
+                             learning_rate_pl: exp_config.learning_rate_tr,
+                             training_pl: True}
                 
                 # ===========================
                 # opt step
@@ -343,14 +372,19 @@ def do_eval(sess,
     dice_ii = 0
     num_batches = 0
 
-    for batch in iterate_minibatches(images, labels, batch_size, train_or_eval = 'eval'):
+    for batch in iterate_minibatches(images,
+                                     labels,
+                                     batch_size,
+                                     train_or_eval = 'eval'):
 
         x, y = batch
 
         if y.shape[0] < batch_size:
             continue
         
-        feed_dict = {images_placeholder: x, labels_placeholder: y, training_time_placeholder: False}
+        feed_dict = {images_placeholder: x,
+                     labels_placeholder: y,
+                     training_time_placeholder: False}
         
         loss, fg_dice = sess.run(eval_loss, feed_dict=feed_dict)
         
@@ -392,7 +426,7 @@ def iterate_minibatches(images,
         # ===========================    
         # data augmentation (contrast changes + random elastic deformations)
         # ===========================      
-        if exp_config.da_ratio > 0:
+        if args.da_ratio > 0.0:
 
             # ===========================    
             # doing data aug both during training as well as during evaluation on the validation set (used for model selection)
@@ -401,7 +435,7 @@ def iterate_minibatches(images,
             do_rot90 = args.train_dataset in ['HVHD', 'CSF', 'UHE']
             x, y = utils.do_data_augmentation(images = x,
                                               labels = y,
-                                              data_aug_ratio = exp_config.da_ratio,
+                                              data_aug_ratio = args.da_ratio,
                                               sigma = exp_config.sigma,
                                               alpha = exp_config.alpha,
                                               trans_min = exp_config.trans_min,
