@@ -241,26 +241,29 @@ def prepare_data(input_folder,
             print(img.shape)
             
             ### PROCESSING LOOP FOR SLICE-BY-SLICE 2D DATA ###################
-            scale_vector = [pixel_size[0] / target_resolution[0],
-                            pixel_size[1] / target_resolution[1]]
+            scale_vector = [pixel_size[0] / target_resolution[0], pixel_size[1] / target_resolution[1]]
 
             for zz in range(img.shape[2]):
 
                 slice_img = np.squeeze(img[:, :, zz])
-                img_rescaled = transform.rescale(slice_img,
-                                                 scale_vector,
-                                                 order=1,
-                                                 preserve_range=True,
-                                                 multichannel=False,
-                                                 mode = 'constant')
-
                 slice_lbl = np.squeeze(lbl[:, :, zz])
-                lbl_rescaled = transform.rescale(slice_lbl,
-                                                 scale_vector,
-                                                 order=0,
-                                                 preserve_range=True,
-                                                 multichannel=False,
-                                                 mode='constant')
+
+                if patient_id in ['26', '27', '28', '29', '30', '31', '32']:
+                    # For these images, rescaling directly to the target resolution (0.625) leads to faultily rescaled labels (all pixels get the value 0)
+                    # Not sure what is causing this.
+                    # Using this intermediate scaling as a workaround.
+                    scale_vector_tmp = [pixel_size[0] / 0.65, pixel_size[1] / 0.65]
+                    img_rescaled = transform.rescale(slice_img, scale_vector_tmp, order=1, preserve_range=True, multichannel=False, mode = 'constant')
+                    lbl_rescaled = transform.rescale(slice_lbl, scale_vector_tmp, order=0, preserve_range=True, multichannel=False, mode='constant')
+                    scale_vector_tmp = [0.65 / target_resolution[0], 0.65 / target_resolution[1]]
+                    img_rescaled = transform.rescale(img_rescaled, scale_vector_tmp, order=1, preserve_range=True, multichannel=False, mode = 'constant')
+                    lbl_rescaled = transform.rescale(lbl_rescaled, scale_vector_tmp, order=0, preserve_range=True, multichannel=False, mode='constant')
+
+                else:
+                    img_rescaled = transform.rescale(slice_img, scale_vector, order=1, preserve_range=True, multichannel=False, mode = 'constant')
+                    lbl_rescaled = transform.rescale(slice_lbl, scale_vector, order=0, preserve_range=True, multichannel=False, mode='constant')
+                
+                logging.info(np.unique(lbl_rescaled))
 
                 img_cropped = utils.crop_or_pad_slice_to_size(img_rescaled, nx, ny)
                 lbl_cropped = utils.crop_or_pad_slice_to_size(lbl_rescaled, nx, ny)
@@ -311,7 +314,7 @@ def _write_range_to_hdf5(hdf5_data,
                          counter_from,
                          counter_to):
 
-    logging.info('Writing data from %d to %d' % (counter_from, counter_to))
+    # logging.info('Writing data from %d to %d' % (counter_from, counter_to))
 
     img_arr = np.asarray(img_list[train_test], dtype=np.float32)
     lbl_arr = np.asarray(lbl_list[train_test], dtype=np.uint8)
@@ -410,5 +413,5 @@ if __name__ == '__main__':
                                                (256, 256),
                                                (0.625, 0.625),
                                                force_overwrite=False,
-                                               sub_dataset = 'HK',
-                                               cv_fold_num = 1)
+                                               sub_dataset = 'UCL',
+                                               cv_fold_num = 3)
