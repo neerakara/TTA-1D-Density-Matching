@@ -25,16 +25,16 @@ fname_tta_dae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_dae.p
 fname_train_dae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_dae.py
 # Test-Time Adaptation using Fields of Experts (Ours)
 fname_tta_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_foe.py
-fname_compute_cnn_gaussians_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_1d_gaussians.py
+fname_compute_cnn_gaussians_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_cnn_1d_gaussians.py
 fname_compute_pca_gaussians_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_pca_1d_gaussians.py
-fname_compute_cnn_kdes_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_1d_kdes.py
+fname_compute_cnn_kdes_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_cnn_1d_kdes.py
 fname_compute_pca_kdes_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/save_pca_1d_kdes.py
 # Evaluate
 fname_eval=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/evaluate.py
 
 # run the requested file with the appropriate arguments
 if [ "$1" == "$fname_sd_tr" ]; then
-    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 05:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 23:59 -oo /cluster/home/nkarani/logs/ python $1 \
     --train_dataset $2 \
     --tr_run_number $3
 
@@ -68,12 +68,31 @@ elif [ "$1" == "$fname_tta_ae" ]; then
 elif [ "$1" == "$fname_tta_foe" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python $1 \
     --train_dataset $2 \
-    --test_dataset $3 \
-    --test_cv_fold_num $4 \
-    --test_sub_num $5 \
-    --PCA_LAMBDA $6 \
-    --b_size $7 \
-    --tta_learning_rate $8
+    --tr_run_number $3 \
+    --test_dataset $4 \
+    --test_cv_fold_num $5 \
+    --test_sub_num $6 \
+    --TTA_VARS $7 \
+    --PDF_TYPE $8 \
+    --KDE_ALPHA $9 \
+    --feature_subsampling_factor ${10} \
+    --features_randomized ${11} \
+    --b_size ${12} \
+    --tta_learning_rate ${13} \
+    --PCA_LAMBDA ${14} \
+    --PCA_STRIDE ${15}
+
+elif [ "$1" == "$fname_compute_cnn_gaussians_foe" ]; then
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 00:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    --train_dataset $2 \
+    --tr_run_number $3 \
+    --feature_subsampling_factor $4 \
+    --features_randomized $5
+
+elif [ "$1" == "$fname_compute_pca_gaussians_foe" ]; then
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 00:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    --train_dataset $2 \
+    --tr_run_number $3
 
 elif [ "$1" == "$fname_eval" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 00:59 -oo /cluster/home/nkarani/logs/ python $1 \
@@ -87,13 +106,16 @@ elif [ "$1" == "$fname_eval" ]; then
     --tta_learning_rate $9 \
     --stopping_criterion ${10} \
     --TTA_VARS ${11} \
-    --lambda_spectral ${12} \
-    --whichAEs ${13} \
-    --PDF_TYPE ${14} \
-    --PCA_LAMBDA ${15} \
-    --feature_subsampling_factor ${16} \
-    --match_with_sd ${17} \
-    --KDE_ALPHA ${18}
+    --tta_method ${12} \
+    --lambda_spectral ${13} \
+    --whichAEs ${14} \
+    --PDF_TYPE ${15} \
+    --PCA_LAMBDA ${16} \
+    --PCA_STRIDE ${17} \
+    --feature_subsampling_factor ${18} \
+    --features_randomized ${19} \
+    --match_with_sd ${20} \
+    --KDE_ALPHA ${21}
 
 elif [ "$1" == "$fname_train_ae" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 05:59 -oo /cluster/home/nkarani/logs/ python $1 \

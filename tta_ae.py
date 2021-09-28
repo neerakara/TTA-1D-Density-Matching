@@ -126,10 +126,7 @@ subject_name = str(name_test_subjects[sub_num])[2:-1]
 logging.info(subject_name)
 
 # dir where the SD mdoels have been saved
-if args.train_dataset in ['UMC', 'site2']:
-    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-else:
-    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # dir for TTA

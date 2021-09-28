@@ -30,13 +30,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "site2") # RUNMC / CSF / UMC / HCPT1 / site2
+parser.add_argument('--train_dataset', default = "UMC") # RUNMC / CSF / UMC / HCPT1 / site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # PCA settings
 parser.add_argument('--PCA_PSIZE', type = int, default = 16) # 16
-parser.add_argument('--PCA_STRIDE', type = int, default = 8) # 8 (for all except UMC, where this needs to set to 2 to get enough 'fg' patches for all subjects)
+parser.add_argument('--PCA_STRIDE', type = int, default = 2) # 8 (for all except UMC, where this needs to set to 2 to get enough 'fg' patches for all subjects)
 parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits / softmax
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
@@ -61,10 +61,7 @@ image_depth_tr = dataset_params[3]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-if args.train_dataset in ['UMC', 'site2']:
-    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-else:
-    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir_sd = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # ==================================================================

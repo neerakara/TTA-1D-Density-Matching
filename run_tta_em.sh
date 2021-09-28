@@ -37,7 +37,7 @@ do
         do
             for sub in $(seq 0 2)
             do
-                bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'RUNMC' $tr_runnum $ts_dataset $ts_cv $sub $bsize
+                bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'site2' $tr_runnum $ts_dataset $ts_cv $sub $bsize
             done
         done
     
@@ -46,7 +46,7 @@ do
         do
             for sub in $(seq 0 2)
             do
-                bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'RUNMC' $tr_runnum $ts_dataset $ts_cv $sub 2
+                bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'site2' $tr_runnum $ts_dataset $ts_cv $sub 2
             done
         done
     
@@ -62,7 +62,7 @@ do
     elif [ "$ts_dataset" == "CALTECH" ]; then
         for sub in $(seq 0 9)
         do
-            bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'RUNMC' $tr_runnum $ts_dataset 1 $sub $bsize
+            bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'HCPT1' $tr_runnum $ts_dataset 1 $sub $bsize
         done
     
     else

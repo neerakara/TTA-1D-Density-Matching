@@ -60,10 +60,7 @@ orig_data_siz_z = loaded_training_data[7]
 # ================================================================
 # Setup directories for this run
 # ================================================================
-if args.train_dataset in ['UMC', 'site2']:
-    expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
-else:
-    expname_i2l = 'tr' + args.train_dataset + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
+expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r' + str(args.tr_run_number) + '/' + 'i2i2l/'
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 logging.info('SD training directory: %s' %log_dir)
 log_dir_pdfs = log_dir + 'onedpdfs/'
@@ -86,15 +83,23 @@ with tf.Graph().as_default():
     # ================================================================
     images_pl = tf.placeholder(tf.float32, shape = [None] + list(image_size) + [1], name = 'images')
     training_pl = tf.constant(False, dtype=tf.bool)
+    
     # ================================================================
     # insert a normalization module in front of the segmentation network
     # the normalization module is trained for each test image
     # ================================================================
-    images_normalized, added_residual = model.normalize(images_pl, exp_config, training_pl = training_pl)
+    images_normalized, added_residual = model.normalize(images_pl,
+                                                        exp_config,
+                                                        training_pl = training_pl)
+
     # ================================================================
     # build the graph that computes predictions from the inference model
     # ================================================================
-    logits, softmax, preds = model.predict_i2l(images_normalized, exp_config, training_pl = training_pl, nlabels = nlabels)
+    logits, softmax, preds = model.predict_i2l(images_normalized,
+                                               exp_config,
+                                               training_pl = training_pl,
+                                               nlabels = nlabels)
+
     # ================================================================
     # collect all vars in a list
     # ================================================================
