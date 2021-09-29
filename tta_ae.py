@@ -58,15 +58,15 @@ parser.add_argument('--tta_string', default = "tta/")
 parser.add_argument('--tta_method', default = "AE")
 parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2 
 # Which vars to adapt?
-parser.add_argument('--TTA_VARS', default = "AdaptAxAf") # BN / NORM / AdaptAx / AdaptAxAf
+parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM / AdaptAx / AdaptAxAf
 # which AEs
-parser.add_argument('--whichAEs', default = "xn_and_y") # xn / xn_and_y / xn_f1_f2_f3_y
+parser.add_argument('--whichAEs', default = "xn_f1_f2_f3_y") # xn / xn_y / xn_f1_f2_f3_y
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 8)
 
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 1e-5) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 1e-4) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
@@ -82,6 +82,11 @@ parser.add_argument('--debug', type = int, default = 0) # 1 / 0
 # whether to train Ax first or not
 parser.add_argument('--train_Ax_first', type = int, default = 0) # 1 / 0
 parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
+
+# number channels in features that are autoencoded
+parser.add_argument('--num_channels_f1', type = int, default = 32) # 16 / 32
+parser.add_argument('--num_channels_f2', type = int, default = 64) # 32 / 64
+parser.add_argument('--num_channels_f3', type = int, default = 128) # 64 / 128
 
 # parse arguments
 args = parser.parse_args()
@@ -249,9 +254,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 logging.info(wf1)
                 logging.info(wf2)
                 logging.info(wf3)
-            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
-            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
-            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
+            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f1,args.num_channels_f1], name = 'wf1_init_pl')
+            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f2,args.num_channels_f2], name = 'wf2_init_pl')
+            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f3,args.num_channels_f3], name = 'wf3_init_pl')
             init_wf1_op = wf1.assign(wf1_init_pl)
             init_wf2_op = wf2.assign(wf2_init_pl)
             init_wf3_op = wf3.assign(wf3_init_pl)
@@ -282,7 +287,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         
         if args.whichAEs == 'xn':
             loss_ae_op = loss_op_xn
-        elif args.whichAEs == 'xn_and_y':
+        elif args.whichAEs == 'xn_y':
             loss_ae_op = loss_op_xn + loss_op_y
         elif args.whichAEs == 'xn_f1_f2_f3_y':
             loss_ae_op = loss_op_xn + loss_op_y + loss_op_f1 + loss_op_f2 + loss_op_f3
@@ -291,11 +296,11 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # TTA loss - spectral norm of the feature adaptors
         # ================================================================
         if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
-            # wf1_ = tf.transpose(wf1[0,0,:,:]) * wf1[0,0,:,:] - tf.eye(16)
+            # wf1_ = tf.transpose(wf1[0,0,:,:]) * wf1[0,0,:,:] - tf.eye(args.num_channels_f1)
             # loss_spectral_norm_wf1_op = tf.linalg.svd(wf1_, compute_uv=False)[...,0]
-            # wf2_ = tf.transpose(wf2[0,0,:,:]) * wf2[0,0,:,:] - tf.eye(32)
+            # wf2_ = tf.transpose(wf2[0,0,:,:]) * wf2[0,0,:,:] - tf.eye(args.num_channels_f2)
             # loss_spectral_norm_wf2_op = tf.linalg.svd(wf2_, compute_uv=False)[...,0]
-            # wf3_ = tf.transpose(wf3[0,0,:,:]) * wf3[0,0,:,:] - tf.eye(64)
+            # wf3_ = tf.transpose(wf3[0,0,:,:]) * wf3[0,0,:,:] - tf.eye(args.num_channels_f3)
             # loss_spectral_norm_wf3_op = tf.linalg.svd(wf3_, compute_uv=False)[...,0]
 
             loss_spectral_norm_wf1_op = model.spectral_loss(wf1)
@@ -407,6 +412,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         saver_ae_f3 = tf.train.Saver(var_list = ae_f3_vars)
         # tta savers (we need multiple of these to save according to different stopping criteria)
         saver_tta = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # general saver after every few epochs
+        saver_tta_init = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves the initial values of the TTA vars
         saver_tta_best = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # saves the weights when the exponential moving average of the loss is the lowest
         saver_tta_best_first_10_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 10 epochs 
         saver_tta_best_first_50_epochs = tf.train.Saver(var_list = tta_vars, max_to_keep=1) # like saver_tta_best, but restricted to the first 50 epochs 
@@ -424,9 +430,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         sess.run(init_ops)
 
         if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
-            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(16), axis=0), axis=0)})
-            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
-            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
+            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f1), axis=0), axis=0)})
+            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f2), axis=0), axis=0)})
+            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f3), axis=0), axis=0)})
 
             if args.debug == 1:
                 logging.info('Initialized feature adaptors..')   
@@ -528,6 +534,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
 
         # This will be set to True once a SOS model is saved, so that this model is not overwritten
         model_sos_saved = False
+
+        # save initial values of the TTA vars (useful to check how much does the performance degrade due to random init of the adaptor modules)
+        saver_tta_init.save(sess, os.path.join(log_dir_tta, 'models/tta_init.ckpt'), global_step=0)
 
         # ===================================
         # TTA / SFDA iterations

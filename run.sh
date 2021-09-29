@@ -58,13 +58,18 @@ elif [ "$1" == "$fname_tta_em" ]; then
     --b_size $7
 
 elif [ "$1" == "$fname_tta_ae" ]; then
-    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 03:59 -oo /cluster/home/nkarani/logs/ python $1 \
     --train_dataset $2 \
-    --test_dataset $3 \
-    --test_cv_fold_num $4 \
-    --test_sub_num $5 \
-    --lambda_spectral $6 \
-    --whichAEs $7
+    --tr_run_number $3 \
+    --test_dataset $4 \
+    --test_cv_fold_num $5 \
+    --test_sub_num $6 \
+    --TTA_VARS $7 \
+    --whichAEs $8 \
+    --lambda_spectral $9 \
+    --tta_learning_rate ${10} \
+    --b_size ${11}
+    
 
 elif [ "$1" == "$fname_train_ae" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 05:59 -oo /cluster/home/nkarani/logs/ python $1 \
