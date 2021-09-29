@@ -16,7 +16,7 @@ fname_sd_tr=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_i2l.p
 # Transfer learning - finetuning using labelled images in the target domain (benchmark)
 fname_tl=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/baseline_tl.py
 # Test-Time Adaptation using Entropy Minimization (Wang et al, ICLR 2021)
-fname_tta_em=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/baseline_tta_em.py
+fname_tta_em=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_em.py
 # Test-Time Adaptation using Autoencoders (He et al, MedIA 2021)
 fname_tta_ae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_ae.py
 fname_train_ae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_ae.py
@@ -45,7 +45,8 @@ elif [ "$1" == "$fname_tl" ]; then
     --test_dataset $4 \
     --test_cv_fold_num $5 \
     --TL_VARS $6 \
-    --tl_runnum $7
+    --tl_runnum $7 \
+    --batch_size $8
 
 elif [ "$1" == "$fname_tta_em" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python $1 \
@@ -64,6 +65,12 @@ elif [ "$1" == "$fname_tta_ae" ]; then
     --test_sub_num $5 \
     --lambda_spectral $6 \
     --whichAEs $7
+
+elif [ "$1" == "$fname_train_ae" ]; then
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 05:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    --train_dataset $2 \
+    --tr_run_number $3 \
+    --ae_features $4
 
 elif [ "$1" == "$fname_tta_foe" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 01:59 -oo /cluster/home/nkarani/logs/ python $1 \

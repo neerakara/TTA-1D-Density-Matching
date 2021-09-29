@@ -451,7 +451,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         # Restore the autoencoder (Xn) parameters
         # ================================================================
-        path_to_ae_models = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/YufanArch/models_'
+        path_to_ae_models = sys_config.project_root + 'log_dir/' + expname_i2l + 'tta/AE/r' + str(args.ae_runnum) + '/models_'
         checkpoint_path = utils.get_latest_model_checkpoint_path(path_to_ae_models + 'xn/', 'best_loss.ckpt')
         logging.info('Restoring the trained parameters from %s...' % checkpoint_path)
         saver_ae_xn.restore(sess, checkpoint_path)

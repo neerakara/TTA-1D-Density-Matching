@@ -104,7 +104,7 @@ expname_i2l = 'tr' + args.train_dataset + '_cv' + str(args.tr_cv_fold_num) + '_r
 log_dir = sys_config.project_root + 'log_dir/' + expname_i2l
 
 # dir for AE
-exp_str = 'tta/AE/r' + str(args.ae_runnum) + '/YufanArch/'
+exp_str = 'tta/AE/r' + str(args.ae_runnum) + '/'
 log_dir_ae = log_dir + exp_str
 tensorboard_dir_ae = sys_config.tensorboard_root + expname_i2l + exp_str + args.ae_features + '/'
 
@@ -180,7 +180,7 @@ with tf.Graph().as_default():
     elif args.ae_features == 'y':
         
         # ======================
-        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # autoencoder on the space of softmax output
         # ======================
         softmax_autoencoded = model.autoencode(softmax,
                                                exp_config,
@@ -197,14 +197,14 @@ with tf.Graph().as_default():
     elif args.ae_features == 'f1':
         
         # ======================
-        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # autoencoder on the space of level 1 features
         # ======================
         features_level1_autoencoded = model.autoencode(features_level1,
                                                        exp_config,
                                                        training_pl,
                                                        args.ae_features)
-        logging.info('shape of AE input: ' + str(features_level1.shape)) # (batch_size, 256, 256, num_classes)
-        logging.info('shape of AE output: ' + str(features_level1_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE input: ' + str(features_level1.shape)) # (batch_size, 256, 256, num_channels)
+        logging.info('shape of AE output: ' + str(features_level1_autoencoded.shape)) # (batch_size, 256, 256, num_channels)
 
         # ======================
         # AE loss
@@ -214,14 +214,14 @@ with tf.Graph().as_default():
     elif args.ae_features == 'f2':
         
         # ======================
-        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # autoencoder on the space of level 2 features
         # ======================
         features_level2_autoencoded = model.autoencode(features_level2,
                                                        exp_config,
                                                        training_pl,
                                                        args.ae_features)
-        logging.info('shape of AE input: ' + str(features_level2.shape)) # (batch_size, 256, 256, num_classes)
-        logging.info('shape of AE output: ' + str(features_level2_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE input: ' + str(features_level2.shape)) # (batch_size, 256, 256, num_channels)
+        logging.info('shape of AE output: ' + str(features_level2_autoencoded.shape)) # (batch_size, 256, 256, num_channels)
 
         # ======================
         # AE loss
@@ -231,14 +231,14 @@ with tf.Graph().as_default():
     elif args.ae_features == 'f3':
         
         # ======================
-        # autoencoder on the space of softmax output (combine all channels into one with the highest probability)
+        # autoencoder on the space of level 3 features
         # ======================
         features_level3_autoencoded = model.autoencode(features_level3,
                                                        exp_config,
                                                        training_pl,
                                                        args.ae_features)
-        logging.info('shape of AE input: ' + str(features_level3.shape)) # (batch_size, 256, 256, num_classes)
-        logging.info('shape of AE output: ' + str(features_level3_autoencoded.shape)) # (batch_size, 256, 256, num_classes)
+        logging.info('shape of AE input: ' + str(features_level3.shape)) # (batch_size, 256, 256, num_channels)
+        logging.info('shape of AE output: ' + str(features_level3_autoencoded.shape)) # (batch_size, 256, 256, num_channels)
 
         # ======================
         # AE loss

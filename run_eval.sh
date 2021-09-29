@@ -4,21 +4,21 @@ filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/evaluate.py
 tr_runnum=1
 eval_type=1 # 1 (SD + DA baseline) | 2 (TL benchmark) | 3 (TTA-EM) | 4 (TTA-AE) | 5 (TTA-DAE) | 6 (TTA-FoE)
 
-transfer=0 # set =1 for transfer learning, 0 for rest
-normalize=1 # set =1 for TTA, 0 for baseline and benchmark
+transfer=1 # set = 1 for transfer learning, 0 for rest
+normalize=0 # set = 1 for TTA, 0 for baseline AND benchmark
 # now, tta related parameters (don't matter for baseline and benchmark)
 bsize=8
 lr=0.0001
 stop='best_loss'
 tta_vars='NORM'
-tta_method='FoE'
+tta_method='entropy_min' # FoE / AE / entropy_min / DAE
 # matter only for TTA-AE
 lam_spec=0.0
 aes='xn_and_y'
 # matter only for TTA-FoE
 pdf='GAUSSIAN'
-lam_pca=1.0
-stride_pca=8
+lam_pca=0.0
+stride_pca=2
 subsample=1 # 16 for KDE
 randomize=0 # 1 for KDE
 match=2 # 1 / 2
@@ -35,7 +35,7 @@ else
 fi
     
 # run evaluation for each test dataset
-for ts_dataset in 'UHE' 'HVHD' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH' # | 'RUNMC' 'CSF' 'UMC' 'site2' 'HCPT1'
+for ts_dataset in 'site1' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH' # | 'RUNMC' 'CSF' 'UMC' 'site2' 'HCPT1'
 do   
     if [ "$ts_dataset" == "BMC" -o "$ts_dataset" == "USZ" -o "$ts_dataset" == "RUNMC" ]; then
         tr_dataset='RUNMC'

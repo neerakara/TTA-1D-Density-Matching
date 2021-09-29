@@ -32,7 +32,7 @@ parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / B
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 
 # Batch settings
-parser.add_argument('--b_size', type = int, default = 16)
+parser.add_argument('--batch_size', type = int, default = 16)
 
 
 # TL base string
@@ -115,8 +115,8 @@ def run_transfer():
         # create placeholders
         # ================================================================
         logging.info('Creating placeholders...')
-        image_tensor_shape = [exp_config.batch_size] + list(image_size) + [1]
-        mask_tensor_shape = [exp_config.batch_size] + list(image_size)
+        image_tensor_shape = [args.batch_size] + list(image_size) + [1]
+        mask_tensor_shape = [args.batch_size] + list(image_size)
         images_pl = tf.placeholder(tf.float32, shape=image_tensor_shape, name = 'images')
         labels_pl = tf.placeholder(tf.uint8, shape=mask_tensor_shape, name = 'labels')
         learning_rate_pl = tf.placeholder(tf.float32, shape=[], name = 'learning_rate')
@@ -286,7 +286,7 @@ def run_transfer():
             # ================================================               
             # batches
             # ================================================            
-            for batch in iterate_minibatches(imtr, gttr, batch_size = exp_config.batch_size, train_or_eval = 'train'):
+            for batch in iterate_minibatches(imtr, gttr, batch_size = args.batch_size, train_or_eval = 'train'):
                 
                 start_time = time.time()
                 x, y = batch
@@ -294,7 +294,7 @@ def run_transfer():
                 # ===========================
                 # avoid incomplete batches
                 # ===========================
-                if y.shape[0] < exp_config.batch_size:
+                if y.shape[0] < args.batch_size:
                     step += 1
                     continue
                 
@@ -338,7 +338,7 @@ def run_transfer():
                                                      training_pl,
                                                      imtr,
                                                      gttr,
-                                                     exp_config.batch_size)                    
+                                                     args.batch_size)                    
                     
                     tr_summary_msg = sess.run(tr_summary, feed_dict={tr_error: train_loss, tr_dice: train_dice})
                     summary_writer.add_summary(tr_summary_msg, step)
@@ -362,7 +362,7 @@ def run_transfer():
                                                  training_pl,
                                                  imvl,
                                                  gtvl,
-                                                 exp_config.batch_size)                    
+                                                 args.batch_size)                    
                     
                     vl_summary_msg = sess.run(vl_summary, feed_dict={vl_error: val_loss, vl_dice: val_dice})
                     summary_writer.add_summary(vl_summary_msg, step)
