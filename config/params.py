@@ -24,6 +24,7 @@ model_handle_self_sup_vae = model_zoo.self_sup_variational_autoencoder
 model_handle_self_sup_dae = model_zoo.self_sup_denoising_autoencoder_3D
 model_handle_adaptorAx = model_zoo.adaptor_Ax
 model_handle_i2l_with_adaptors = model_zoo.unet2D_i2l_with_adaptors_new
+model_handle_l2l = model_zoo.self_sup_denoising_autoencoder_3D
 
 # ======================================================================
 # training settings
@@ -33,6 +34,7 @@ learning_rate_tr = 1e-3
 learning_rate_tl = 1e-4
 optimizer_handle = tf.train.AdamOptimizer
 loss_type = 'dice'
+loss_type_l2l = 'dice'
 debug = False
 
 # ======================================================================
@@ -41,6 +43,7 @@ debug = False
 max_steps_tr = 30001 # initial training on SD
 max_steps_tl = 5001
 max_steps_ae = 25001
+max_steps_dae = 50001
 train_eval_frequency = 1000
 val_eval_frequency = 1000   
 save_frequency = 1000
@@ -114,14 +117,17 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # size, resolution, etc.
         # =================================
-        image_size = (256, 256)
         nlabels = 3
+        image_depth_tr = 32
+        image_depth_ts = 32
+        image_size = (256, 256)
         target_resolution = (0.625, 0.625)
+
+        image_size_3d = (32, 256, 256)
+        target_resolution_3d = (2.5, 0.625, 0.625)
         downsampling_factor_x = 1
         downsampling_factor_y = 1
         downsampling_factor_z = 1
-        image_depth_tr = 32
-        image_depth_ts = 32
 
         # =================================
         # Whether to evaluate binary dice or over multiple classes
@@ -259,7 +265,12 @@ def get_dataset_dependent_params(train_dataset,
             tta_model_saving_freq, # 7
             tta_vis_freq, # 8
             b_size_compute_sd_pdfs, # 9
-            b_size_compute_sd_gaussians) # 10
+            b_size_compute_sd_gaussians, # 10
+            image_size_3d, # 11 
+            target_resolution_3d, # 12
+            downsampling_factor_x, # 13
+            downsampling_factor_y, # 14
+            downsampling_factor_z) # 15
 
 # ================================================================
 # Function to make the name for the experiment run according to TTA parameters
@@ -289,6 +300,13 @@ def make_tta_exp_name(args, tta_method = 'FoE'):
         exp_str = exp_str + '_BS' + str(args.b_size) # TTA batch size
         exp_str = exp_str + '_FS' + str(args.feature_subsampling_factor) # Feature sub_sampling
         exp_str = exp_str + '_rand' + str(args.features_randomized) # If FS > 1 (random or uniform)
+
+        if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
+            exp_str = exp_str + 'lambda_spectral_' + str(args.lambda_spectral)
+            if args.instance_norm_in_Ax == 0:
+                exp_str = exp_str + '_no_IN_in_Ax'
+            if args.train_Ax_first == 0:
+                exp_str = exp_str + '_random_init_Ax'
         
         # Matching with mean over SD subjects or taking expectation wrt SD subjects
         exp_str = exp_str + '/SD_MATCH' + str(args.match_with_sd) 

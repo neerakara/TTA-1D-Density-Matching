@@ -91,6 +91,10 @@ parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
 parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
 # Which model to use for evaluation
 parser.add_argument('--stopping_criterion', default = 'best_loss') # best_loss (best_loss_in_all_epochs) / best_loss_in_first_10_epochs / best_loss_in_first_50_epochs / best_loss_in_first_100_epochs
+# number channels in features that are autoencoded
+parser.add_argument('--num_channels_f1', type = int, default = 32) # 16 / 32
+parser.add_argument('--num_channels_f2', type = int, default = 64) # 32 / 64
+parser.add_argument('--num_channels_f3', type = int, default = 128) # 64 / 128
 
 # ====================
 # Optimization options
@@ -101,6 +105,8 @@ parser.add_argument('--b_size', type = int, default = 8)
 parser.add_argument('--tta_learning_rate', type = float, default = 0.00001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
+
+parser.add_argument('--save_visual_results', type = int, default = 0) # 0 / 1
 
 # parse arguments
 args = parser.parse_args()
@@ -184,6 +190,20 @@ def predict_segmentation(subject_name, image, normalize = 1):
             tta_vars = adapt_ax_vars + adapt_af_vars
                                 
         # ================================================================
+        # ops for initializing feature adaptors to identity
+        # ================================================================
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            wf1 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A1/kernel:0"][0]
+            wf2 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A2/kernel:0"][0]
+            wf3 = [v for v in tf.global_variables() if v.name == "i2l_mapper/adaptAf_A3/kernel:0"][0]
+            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f1,args.num_channels_f1], name = 'wf1_init_pl')
+            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f2,args.num_channels_f2], name = 'wf2_init_pl')
+            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f3,args.num_channels_f3], name = 'wf3_init_pl')
+            init_wf1_op = wf1.assign(wf1_init_pl)
+            init_wf2_op = wf2.assign(wf2_init_pl)
+            init_wf3_op = wf3.assign(wf3_init_pl)
+
+        # ================================================================
         # add init ops
         # ================================================================
         init_ops = tf.global_variables_initializer()
@@ -208,6 +228,10 @@ def predict_segmentation(subject_name, image, normalize = 1):
         # Run the Op to initialize the variables.
         # ================================================================
         sess.run(init_ops)
+        if args.TTA_VARS in ['AdaptAxAf', 'AdaptAx']:
+            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f1), axis=0), axis=0)})
+            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f2), axis=0), axis=0)})
+            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f3), axis=0), axis=0)})
         
         # ================================================================
         # Restore the segmentation network parameters
@@ -443,8 +467,7 @@ def main():
         # ================================================================
         # save sample results
         # ================================================================
-        save_visual_results = True
-        if save_visual_results == True:
+        if args.save_visual_results == 1:
             
             d_vis = image_depth_ts
             # ids_vis = np.arange(0, 32, 4) # ids = np.arange(48, 256-48, (256-96)//8)

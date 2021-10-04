@@ -207,23 +207,24 @@ def conv3D_layer_bn(x,
                     num_filters=32,
                     activation=tf.nn.relu,
                     padding="SAME",
-                    kernel_initializer=None):
+                    kernel_initializer=None,
+                    bn=True):
 
-    conv = tf.layers.conv3d(inputs=x,
-                            filters=num_filters,
-                            kernel_size=kernel_size,
-                            padding=padding,
-                            name=name,
-                            use_bias=False,
-                            kernel_initializer=kernel_initializer)
+    out = tf.layers.conv3d(inputs=x,
+                           filters=num_filters,
+                           kernel_size=kernel_size,
+                           padding=padding,
+                           name=name,
+                           use_bias=False,
+                           kernel_initializer=kernel_initializer)
     
-    conv_bn = tf.layers.batch_normalization(inputs=conv,
-                                            name = name + '_bn',
-                                            training = training)
+    if bn == True:
+        out = tf.layers.batch_normalization(inputs=out, name = name + '_bn', training = training)
     
-    act = activation(conv_bn)
+    if activation != None:
+        out = activation(out)
 
-    return act
+    return out
 
 ## ======================================================================
 # max pooling layer

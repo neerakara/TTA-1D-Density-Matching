@@ -75,10 +75,11 @@ def predict_i2l_with_adaptors(images,
 # ================================================================
 def predict_dae(inputs,
                 exp_config,
+                nlabels,
                 training_pl):
 
     logits = exp_config.model_handle_l2l(inputs,
-                                         nlabels = exp_config.nlabels,
+                                         nlabels = nlabels,
                                          training_pl = training_pl)
 
     softmax = tf.nn.softmax(logits)
@@ -297,15 +298,23 @@ def evaluation_i2l(logits,
 def evaluation_dae(clean_labels,
                    noisy_labels,
                    denoised_logits,
-                   nlabels):
+                   nlabels,
+                   loss_type = 'dice',
+                   are_labels_1hot = True):
     
     # =================
     # compute dice loss 
     # =================        
-    dice_loss = losses.dice_loss(denoised_logits, tf.one_hot(clean_labels, depth=nlabels))
+    # dice_loss = losses.dice_loss(denoised_logits, tf.one_hot(clean_labels, depth=nlabels))
+    dice_loss = losses.dice_loss(denoised_logits, clean_labels)
 
-    denoised_labels = tf.argmax(tf.nn.softmax(denoised_logits, axis=-1), axis=-1)    
     noisy_labels = tf.argmax(noisy_labels, axis=-1)
+    denoised_labels = tf.argmax(tf.nn.softmax(denoised_logits, axis=-1), axis=-1)    
+
+    if are_labels_1hot == False:
+        clean_labels = clean_labels
+    else:
+        clean_labels = tf.argmax(clean_labels, axis=-1)
     
     # =================
     # write some segmentations to tensorboard
@@ -388,50 +397,6 @@ def evaluation_self_sup_vae(recons,
 
 # ================================================================
 # ================================================================
-def evaluation_l2i(labels,
-                   nlabels,
-                   predicted_images,
-                   true_images,
-                   loss_type,
-                   are_labels_1hot):
-
-
-    if loss_type is 'l2':
-        loss = tf.reduce_mean(tf.square(predicted_images - true_images))    
-        
-    elif loss_type is 'ssim':    
-        loss = 1 - tf.reduce_mean(tf.image.ssim(img1 = predicted_images,
-                                                img2 = true_images,
-                                                max_val = 1.0))
-    
-    if are_labels_1hot is False:
-        masks = labels
-    else:
-        masks = tf.argmax(labels, axis=-1)
-    
-    # =================
-    # write some segmentations to tensorboard
-    # =================
-    mask1 = prepare_tensor_for_summary(masks, mode='mask', n_idx_batch=0, nlabels=nlabels)
-    mask2 = prepare_tensor_for_summary(masks, mode='mask', n_idx_batch=1, nlabels=nlabels)
-    mask3 = prepare_tensor_for_summary(masks, mode='mask', n_idx_batch=2, nlabels=nlabels)
-    
-    image_gt1 = prepare_tensor_for_summary(true_images, mode='image', n_idx_batch=0, nlabels=nlabels)
-    image_gt2 = prepare_tensor_for_summary(true_images, mode='image', n_idx_batch=1, nlabels=nlabels)
-    image_gt3 = prepare_tensor_for_summary(true_images, mode='image', n_idx_batch=2, nlabels=nlabels)
-    
-    image_pred1 = prepare_tensor_for_summary(predicted_images, mode='image', n_idx_batch=0, nlabels=nlabels)
-    image_pred2 = prepare_tensor_for_summary(predicted_images, mode='image', n_idx_batch=1, nlabels=nlabels)
-    image_pred3 = prepare_tensor_for_summary(predicted_images, mode='image', n_idx_batch=2, nlabels=nlabels)
-    
-    tf.summary.image('example_labels', tf.concat([mask1, mask2, mask3], axis=0))
-    tf.summary.image('example_images_true', tf.concat([image_gt1, image_gt2, image_gt3], axis=0))
-    tf.summary.image('example_images_pred', tf.concat([image_pred1, image_pred2, image_pred3], axis=0))
-
-    return loss
-
-# ================================================================
-# ================================================================
 def prepare_tensor_for_summary(img,
                                mode,
                                n_idx_batch=0,
@@ -453,7 +418,7 @@ def prepare_tensor_for_summary(img,
         elif img.get_shape().ndims == 4:
             V = tf.slice(img, (n_idx_batch, n_idx_z, 0, 0), (1, 1, -1, -1))
         elif img.get_shape().ndims == 5:
-            V = tf.slice(img, (n_idx_batch, 0, 0, n_idx_z, 0), (1, -1, -1, 1, 1))
+            V = tf.slice(img, (n_idx_batch, n_idx_z, 0, 0, 0), (1, 1, -1, -1, 1))
         else: raise ValueError('Dont know how to deal with input dimension %d' % (img.get_shape().ndims))
 
     elif mode == 'image':

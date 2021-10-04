@@ -519,6 +519,78 @@ def do_data_augmentation(images,
             
     return images_, labels_
 
+# ==================================================================
+#
+# ==================================================================        
+def do_data_augmentation_on_3d_labels(labels,
+                                      data_aug_ratio,
+                                      sigma,
+                                      alpha,
+                                      trans_min,
+                                      trans_max,
+                                      rot_min,
+                                      rot_max,
+                                      scale_min,
+                                      scale_max):
+    
+    labels_ = np.copy(labels[0,...])
+        
+    # ========
+    # elastic deformation
+    # ========
+    if np.random.rand() < data_aug_ratio:
+        
+        labels_ = elastic_transform_label_3d(labels_,
+                                             sigma = sigma,
+                                             alpha = alpha)
+        
+    # ========
+    # translation
+    # ========
+    if np.random.rand() < data_aug_ratio:
+        
+        random_shift_x = np.random.uniform(trans_min, trans_max)
+        random_shift_y = np.random.uniform(trans_min, trans_max)
+        
+        for zz in range(labels_.shape[0]):
+            labels_[zz,:,:] = scipy.ndimage.interpolation.shift(labels_[zz,:,:],
+                                                                shift = (random_shift_x, random_shift_y),
+                                                                order = 0)
+        
+    # ========
+    # rotation
+    # ========
+    if np.random.rand() < data_aug_ratio:
+        
+        random_angle = np.random.uniform(rot_min, rot_max)
+        
+        for zz in range(labels_.shape[0]):
+            labels_[zz,:,:] = scipy.ndimage.interpolation.rotate(labels_[zz,:,:],
+                                                            reshape = False,
+                                                            angle = random_angle,
+                                                            axes = (1, 0),
+                                                            order = 0)
+            
+    # ========
+    # scaling
+    # ========
+    if np.random.rand() < data_aug_ratio:
+        
+        n_x, n_y = labels_.shape[1], labels_.shape[2]
+        
+        scale_val = np.round(np.random.uniform(scale_min, scale_max), 2)
+        
+        for zz in range(labels_.shape[0]):
+            labels_i_tmp = transform.rescale(labels_[zz,:,:],
+                                             scale_val,
+                                             order = 0,
+                                             preserve_range = True,
+                                             mode = 'constant')
+    
+            labels_[zz,:,:] = crop_or_pad_slice_to_size(labels_i_tmp, n_x, n_y)
+        
+    return np.expand_dims(labels_, axis=0)
+
 # ===============================================================
 # ===============================================================
 def make_onehot(arr, nlabels):
@@ -622,3 +694,55 @@ def print_results(fname, dataset):
     print('====================================')
     print(lines[31])
     print('====================================')
+
+# ==================================================================
+# ==================================================================
+def make_noise_masks_3d(shape,
+                        mask_type,
+                        mask_params,
+                        nlabels,
+                        labels_1hot = None,
+                        is_num_masks_fixed = False,
+                        is_size_masks_fixed = False):
+    
+    blank_masks = np.ones(shape = shape)
+    wrong_labels = np.zeros(shape = shape)
+                   
+    # ====================
+    # make a random number of noise boxes in this (3d) image
+    # ====================
+    if is_num_masks_fixed is True:
+        num_noise_squares = mask_params[1]
+    else:
+        num_noise_squares = np.random.randint(1, mask_params[1]+1)
+        
+    for _ in range(num_noise_squares):
+            
+        # ====================
+        # choose the size of the noise box randomly 
+        # ====================
+        if is_size_masks_fixed is True:
+            r = mask_params[0]
+        else:
+            r = np.random.randint(1, mask_params[0]+1)
+            
+        # choose the center of the noise box randomly 
+        mcx = np.random.randint(r+1, shape[1]-r-1)
+        mcy = np.random.randint(r+1, shape[2]-r-1)
+        mcz = np.random.randint(r+1, shape[3]-r-1)
+            
+        # set the labels in this box to 0
+        blank_masks[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, :] = 0
+        
+        if mask_type is 'squares_jigsaw':               
+            # choose another box in the image from which copy labels to the previous box
+            mcx_src = np.random.randint(r+1, shape[1]-r-1)
+            mcy_src = np.random.randint(r+1, shape[2]-r-1)
+            mcz_src = np.random.randint(r+1, shape[3]-r-1)
+            wrong_labels[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, :] = labels_1hot[:, mcx_src-r:mcx_src+r, mcy_src-r:mcy_src+r, mcz_src-r:mcz_src+r, :]
+            
+        elif mask_type is 'squares_zeros':                
+            # set the labels in this box to zero
+            wrong_labels[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, 0] = 1
+    
+    return blank_masks, wrong_labels

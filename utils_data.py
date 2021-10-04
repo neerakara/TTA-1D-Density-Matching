@@ -1,3 +1,4 @@
+# 2D dataset loaders
 import data.data_hcp as data_hcp
 import data.data_abide as data_abide
 import data.data_nci as data_nci
@@ -6,9 +7,61 @@ import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
 import data.data_wmh as data_wmh
 import data.data_scgm as data_scgm
+
+# 3D dataset loaders
+import data.data_nci_3d as data_nci_3d
+
+# other imports
 import logging
 import config.system_paths as sys_config
 import numpy as np
+
+# ==================================================================   
+# TRAINING DATA LOADER
+# ==================================================================   
+def load_labels_3d(train_dataset,
+                   image_size,
+                   target_resolution,
+                   cv_fold_num = 1):
+
+    # ================================================================
+    # NCI
+    # ================================================================
+    if train_dataset in ['RUNMC', 'BMC']:
+    
+        logging.info('Reading NCI - ' + train_dataset + ' images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_nci)
+
+        data_pros = data_nci_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_nci,
+                                                            preprocessing_folder = sys_config.preproc_folder_nci,
+                                                            size = image_size,
+                                                            target_resolution = target_resolution,
+                                                            force_overwrite = False,
+                                                            sub_dataset = train_dataset,
+                                                            cv_fold_num = cv_fold_num)
+        
+        
+        gttr = data_pros['labels_train']
+        gtvl = data_pros['labels_validation']
+        
+        orig_data_res_x = data_pros['px_train'][:]
+        orig_data_res_y = data_pros['py_train'][:]
+        orig_data_res_z = data_pros['pz_train'][:]
+        orig_data_siz_x = data_pros['nx_train'][:]
+        orig_data_siz_y = data_pros['ny_train'][:]
+        orig_data_siz_z = data_pros['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+    return (gttr, # 0
+            gtvl, # 1
+            orig_data_res_x, # 2
+            orig_data_res_y, # 3
+            orig_data_res_z, # 4
+            orig_data_siz_x, # 5
+            orig_data_siz_y, # 6 
+            orig_data_siz_z, # 7
+            num_train_subjects) # 8 # 12
 
 # ==================================================================   
 # TRAINING DATA LOADER

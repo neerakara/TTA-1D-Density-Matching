@@ -101,6 +101,15 @@ parser.add_argument('--lambda_spectral', type = float, default = 1.0) # 1.0 / 5.
 # whether to print debug stuff or not
 parser.add_argument('--debug', type = int, default = 0) # 1 / 0
 
+# whether to train Ax first or not
+parser.add_argument('--train_Ax_first', type = int, default = 0) # 1 / 0
+parser.add_argument('--instance_norm_in_Ax', type = int, default = 0) # 1 / 0
+
+# number channels in features that are autoencoded
+parser.add_argument('--num_channels_f1', type = int, default = 32) # 16 / 32
+parser.add_argument('--num_channels_f2', type = int, default = 64) # 32 / 64
+parser.add_argument('--num_channels_f3', type = int, default = 128) # 64 / 128
+
 # parse arguments
 args = parser.parse_args()
 
@@ -228,7 +237,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
             # Insert a randomly initialized 1x1 'adaptor' even before the normalization module.
             # To follow the procedure used in He MedIA 2021, we will adapt this module for each test volume, and keep the normalization module fixed at the values learned on the SD.
             # ================================================================
-            images_adapted = model.adapt_Ax(images_pl, exp_config)
+            images_adapted = model.adapt_Ax(images_pl, exp_config, instance_norm = args.instance_norm_in_Ax)
 
             # ================================================================
             # Insert a normalization module in front of the segmentation network
@@ -296,9 +305,9 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 logging.info(wf2)
                 logging.info(wf3)
           
-            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,16,16], name = 'wf1_init_pl')
-            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,32,32], name = 'wf2_init_pl')
-            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,64,64], name = 'wf3_init_pl')
+            wf1_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f1,args.num_channels_f1], name = 'wf1_init_pl')
+            wf2_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f2,args.num_channels_f2], name = 'wf2_init_pl')
+            wf3_init_pl = tf.placeholder(tf.float32, shape = [1,1,args.num_channels_f3,args.num_channels_f3], name = 'wf3_init_pl')
           
             init_wf1_op = wf1.assign(wf1_init_pl)
             init_wf2_op = wf2.assign(wf2_init_pl)
@@ -658,21 +667,22 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
         # ================================================================
         sess.run(init_ops)
         if args.TTA_VARS in ['AdaptAx', 'AdaptAxAf']:
-            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(16), axis=0), axis=0)})
-            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(32), axis=0), axis=0)})
-            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(64), axis=0), axis=0)})
+            sess.run(init_wf1_op, feed_dict={wf1_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f1), axis=0), axis=0)})
+            sess.run(init_wf2_op, feed_dict={wf2_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f2), axis=0), axis=0)})
+            sess.run(init_wf3_op, feed_dict={wf3_init_pl: np.expand_dims(np.expand_dims(np.eye(args.num_channels_f3), axis=0), axis=0)})
+
             if args.debug == 1:
                 logging.info('Initialized feature adaptors..')   
                 logging.info(wf1.eval(session=sess))
                 logging.info(wf2.eval(session=sess))
                 logging.info(wf3.eval(session=sess))
 
-            logging.info('Training Ax to be the identity mapping..')
-            for _ in range(100):
-                sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
-            logging.info('Done.. now doing TTA ops from here..')
+            if args.train_Ax_first == 1:
+                logging.info('Training Ax to be the identity mapping..')
+                for _ in range(100):
+                    sess.run(init_ax_op, feed_dict={images_pl: np.expand_dims(test_image[np.random.randint(0, test_image.shape[0], args.b_size), :, :], axis=-1)})
+                logging.info('Done.. now doing TTA ops from here..')
             
-        
         # ================================================================
         # Restore the segmentation network parameters
         # ================================================================

@@ -732,11 +732,13 @@ def self_sup_denoising_autoencoder_3D(inputs, nlabels, training_pl):
         # ====================================
         upsample4 = layers.bilinear_upsample3D(conv8_2, factor = 2, name='upsample4')   
         conv9_1 = layers.conv3D_layer_bn(x=upsample4, name='conv9_1', num_filters=n1, training=training_pl)
-        conv9_2 = layers.conv3D_layer_bn(x=conv9_1, name='conv9_2', num_filters=n1, training=training_pl)
+        # conv9_2 = layers.conv3D_layer_bn(x=conv9_1, name='conv9_2', num_filters=n1, training=training_pl)
+        outputs = layers.conv3D_layer_bn(x=conv9_1, name='conv9_2', num_filters=nlabels, training=training_pl, activation=None, bn=False)
             
         # ====================================
         # Final conv layer - without batch normalization or activation
         # ====================================
-        outputs = layers.conv3D_layer(x=conv9_2, name='output_layer', num_filters=nlabels, kernel_size=1)
+        # outputs = layers.conv3D_layer(x=conv9_2, name='output_layer', num_filters=nlabels, kernel_size=1)
+        # outputs = layers.conv3D_layer_bn(x=conv9_2, name='output_layer', training=training_pl, kernel_size=1, num_filters=nlabels, activation=None, padding="SAME", kernel_initializer=None, bn=False)
         
     return outputs
