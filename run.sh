@@ -76,6 +76,17 @@ elif [ "$1" == "$fname_train_ae" ]; then
     --tr_run_number $3 \
     --ae_features $4
 
+elif [ "$1" == "$fname_tta_dae" ]; then
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 03:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    --train_dataset $2 \
+    --tr_run_number $3 \
+    --test_dataset $4 \
+    --test_cv_fold_num $5 \
+    --test_sub_num $6 \
+    --TTA_VARS $7 \
+    --tta_learning_rate $8 \
+    --b_size $9
+
 elif [ "$1" == "$fname_train_dae" ]; then
     bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 09:59 -oo /cluster/home/nkarani/logs/ python $1 \
     --train_dataset $2 \

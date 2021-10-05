@@ -457,7 +457,9 @@ def prepare_tensor_for_summary(img,
 
 # ================================================================
 # ================================================================
-def divide_vars_into_groups(all_vars, AEs = False):
+def divide_vars_into_groups(all_vars,
+                            AEs = False,
+                            DAE = False):
     
     i2l_vars = []
     normalization_vars = []
@@ -471,6 +473,9 @@ def divide_vars_into_groups(all_vars, AEs = False):
         ae_f1_vars = []
         ae_f2_vars = []
         ae_f3_vars = []
+
+    if DAE == True:
+        dae_vars = []
     
     for v in all_vars:
         
@@ -488,6 +493,10 @@ def divide_vars_into_groups(all_vars, AEs = False):
             if 'self_sup_ae_f3' in var_name:
                 ae_f3_vars.append(v)
 
+        if DAE == True:
+            if 'l2l_mapper' in var_name:
+                dae_vars.append(v)
+
         if 'image_normalizer' in var_name:
             i2l_vars.append(v)
             normalization_vars.append(v)
@@ -504,7 +513,10 @@ def divide_vars_into_groups(all_vars, AEs = False):
         elif 'i2l_mapper' in var_name:
             i2l_vars.append(v)
 
+    # assuming only one of DAE or AEs is true at once
     if AEs == True:
         return i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars, ae_xn_vars, ae_y_vars, ae_f1_vars, ae_f2_vars, ae_f3_vars
+    elif DAE == True:
+        return i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars, dae_vars
     else:
         return i2l_vars, normalization_vars, bn_vars, adapt_ax_vars, adapt_af_vars

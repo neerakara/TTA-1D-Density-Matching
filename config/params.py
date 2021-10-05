@@ -343,6 +343,15 @@ def make_tta_exp_name(args, tta_method = 'FoE'):
         exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
         exp_str = exp_str + '/'
 
+    elif tta_method == 'DAE':
+        exp_str = args.tta_string + args.tta_method + '/r' + str(args.dae_runnum) + '/'
+        exp_str = exp_str + 'subjectwise/' + 'vars' + args.TTA_VARS 
+        exp_str = exp_str + '/BS' + str(args.b_size) # TTA batch size
+        exp_str = exp_str + '_LR' + str(args.tta_learning_rate) # TTA Learning Rate
+        exp_str = exp_str + '_SCH' + str(args.tta_learning_sch) # TTA LR schedule
+        exp_str = exp_str + '_run' + str(args.tta_runnum) # TTA run number
+        exp_str = exp_str + '/'
+
     return exp_str
 
 # ================================================================

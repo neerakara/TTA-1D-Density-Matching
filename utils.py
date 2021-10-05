@@ -746,3 +746,48 @@ def make_noise_masks_3d(shape,
             wrong_labels[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, 0] = 1
     
     return blank_masks, wrong_labels
+
+# ===========================================================================
+# ===========================================================================
+def rescale_image_and_label(image,
+                            label,
+                            num_classes,
+                            slice_thickness_this_subject,
+                            new_resolution,
+                            new_depth):
+    
+    image_rescaled = []
+    label_rescaled = []
+            
+    # ======================
+    # rescale in 3d
+    # ======================
+    scale_vector = [slice_thickness_this_subject / new_resolution, # for this axes, the resolution was kept unchanged during the initial 2D data preprocessing. but for the atlas (made from hcp labels), all of them have 0.7mm slice thickness
+                    1.0, # the resolution along these 2 axes was made as required in the initial 2d data processing already
+                    1.0]
+    
+    image_rescaled = transform.rescale(image,
+                                       scale_vector,
+                                       order=1,
+                                       preserve_range=True,
+                                       multichannel=False,
+                                       mode = 'constant')
+
+    label_onehot = make_onehot(label, num_classes)
+
+    label_onehot_rescaled = transform.rescale(label_onehot,
+                                              scale_vector,
+                                              order=1,
+                                              preserve_range=True,
+                                              multichannel=True,
+                                              mode='constant')
+    
+    label_rescaled = np.argmax(label_onehot_rescaled, axis=-1)
+        
+    # =================
+    # crop / pad
+    # =================
+    image_rescaled_cropped = crop_or_pad_volume_to_size_along_x(image_rescaled, new_depth).astype(np.float32)
+    label_rescaled_cropped = crop_or_pad_volume_to_size_along_x(label_rescaled, new_depth).astype(np.uint8)
+            
+    return image_rescaled_cropped, label_rescaled_cropped
