@@ -441,7 +441,7 @@ with tf.Graph().as_default():
         # Save a checkpoint periodically
         # ===========================
         if step % exp_config.save_frequency == 0:
-            checkpoint_file = os.path.join(log_dir, 'models/model.ckpt')
+            checkpoint_file = os.path.join(log_dir_dae, 'models/model.ckpt')
             saver.save(sess, checkpoint_file, global_step=step)
 
         # ===========================
@@ -465,7 +465,7 @@ with tf.Graph().as_default():
             # ===========================
             if val_loss < best_loss:
                 best_loss = val_loss
-                best_file = os.path.join(log_dir, 'models/best_loss.ckpt')
+                best_file = os.path.join(log_dir_dae, 'models/best_loss.ckpt')
                 saver_best_dice.save(sess, best_file, global_step=step)
                 logging.info('Found new average best loss on validation sets! - %f -  Saving model.' % val_loss)
 
