@@ -11,6 +11,7 @@ import data.data_scgm as data_scgm
 # 3D dataset loaders
 import data.data_nci_3d as data_nci_3d
 import data.data_mnms_3d as data_mnms_3d
+import data.data_scgm_3d as data_scgm_3d
 
 # other imports
 import logging
@@ -55,7 +56,7 @@ def load_labels_3d(train_dataset,
         num_train_subjects = orig_data_siz_z.shape[0] 
 
     # ================================================================
-    # NCI
+    # Cardiac (MnMs)
     # ================================================================
     elif train_dataset in ['CSF', 'UHE', 'HVHD']:
     
@@ -79,6 +80,34 @@ def load_labels_3d(train_dataset,
         orig_data_siz_x = data_mnms['nx_train'][:]
         orig_data_siz_y = data_mnms['ny_train'][:]
         orig_data_siz_z = data_mnms['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # Spine (SCGM)
+    # ================================================================
+    elif train_dataset in ['site2', 'site1', 'site3', 'site4']:
+    
+        logging.info('Reading - ' + train_dataset + ' labels...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_scgm)
+
+        data_scgm = data_scgm_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_scgm,
+                                                             preprocessing_folder = sys_config.preproc_folder_scgm,
+                                                             size = image_size,
+                                                             target_resolution = target_resolution,
+                                                             force_overwrite = False,
+                                                             sub_dataset = train_dataset,
+                                                             cv_fold_number = cv_fold_num)
+                
+        gttr = data_scgm['labels_train']
+        gtvl = data_scgm['labels_validation']
+        
+        orig_data_res_x = data_scgm['px_train'][:]
+        orig_data_res_y = data_scgm['py_train'][:]
+        orig_data_res_z = data_scgm['pz_train'][:]
+        orig_data_siz_x = data_scgm['nx_train'][:]
+        orig_data_siz_y = data_scgm['ny_train'][:]
+        orig_data_siz_z = data_scgm['nz_train'][:]
 
         num_train_subjects = orig_data_siz_z.shape[0] 
 
