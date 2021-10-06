@@ -193,6 +193,11 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
 
     logging.info('shape of the test image (after rescaling and cropping): ' + str(test_image.shape))
     logging.info('shape of the test GT (after rescaling and cropping): ' + str(test_image_gt.shape))
+    # setting GT labels to zero to check if we get similar performance without access to the GT labels.
+    # test_image_gt[test_image_gt!=0] = 0
+    # Ran like this in tta_run_2. Got similar performance as run1. So the actual GT labels are not being used in any way to affect the TTA.
+    # They are being used only for tracking the evolution of the actual Dice of interest.
+    # TTA-DAE works really well for the prostate datasets!
 
     # ================================================================
     # Build the TF graph
@@ -534,12 +539,12 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
 
                 if args.test_dataset in ['UCL', 'HK', 'BIDMC']:
                     label_predicted_hard[label_predicted_hard!=0.0] = 1.0
-                dice_wrt_gt = met.f1_score(test_image_gt.flatten(), label_predicted_hard.flatten(), average=None) 
+                dice_wrt_gt = np.mean(met.f1_score(test_image_gt.flatten(), label_predicted_hard.flatten(), average=None)[1:]) 
                 
                 # ==================
                 # Record dice before this step's updates occur
                 # ==================
-                summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice_pl: np.mean(dice_wrt_gt[1:])}), step-1)
+                summary_writer.add_summary(sess.run(gt_dice_summary, feed_dict={gt_dice_pl: dice_wrt_gt}), step-1)
                 summary_writer.add_summary(sess.run(dae_dice_summary, feed_dict={dae_dice_pl: dae_dice}), step-1)
                 
                 # log

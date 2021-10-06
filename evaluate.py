@@ -77,6 +77,11 @@ parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # ====================
+# options for TTA-DAE
+# ====================
+parser.add_argument('--dae_runnum', type = int, default = 1) # 1 / 2 
+
+# ====================
 # options for TTA-AE
 # ====================
 parser.add_argument('--ae_runnum', type = int, default = 1) # 1 / 2 
