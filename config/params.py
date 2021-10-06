@@ -193,14 +193,17 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # size, resolution, etc.
         # =================================
-        image_size = (256, 256)
         nlabels = 2
+        image_size = (256, 256)
         target_resolution = (1.0, 1.0)
+        image_depth_tr = 48
+        image_depth_ts = 48
+
+        image_size_3d = (48, 256, 256)
+        target_resolution_3d = (3.0, 1.0, 1.0)
         downsampling_factor_x = 1
         downsampling_factor_y = 1
         downsampling_factor_z = 1
-        image_depth_tr = 48
-        image_depth_ts = 48
 
         # =================================
         # Whether to evaluate binary dice or over multiple classes

@@ -12,6 +12,7 @@ import data.data_scgm as data_scgm
 import data.data_nci_3d as data_nci_3d
 import data.data_mnms_3d as data_mnms_3d
 import data.data_scgm_3d as data_scgm_3d
+import data.data_wmh_3d as data_wmh_3d
 
 # other imports
 import logging
@@ -108,6 +109,34 @@ def load_labels_3d(train_dataset,
         orig_data_siz_x = data_scgm['nx_train'][:]
         orig_data_siz_y = data_scgm['ny_train'][:]
         orig_data_siz_z = data_scgm['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # WMH
+    # ================================================================
+    elif train_dataset in ['UMC', 'NUHS']:
+    
+        logging.info('Reading - ' + train_dataset + ' labels...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_wmh)
+
+        data_wmh = data_wmh_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_wmh,
+                                                           preprocessing_folder = sys_config.preproc_folder_wmh,
+                                                           size = image_size,
+                                                           target_resolution = target_resolution,
+                                                           force_overwrite = False,
+                                                           sub_dataset = train_dataset,
+                                                           cv_fold_number = cv_fold_num)
+                
+        gttr = data_wmh['labels_train']
+        gtvl = data_wmh['labels_validation']
+        
+        orig_data_res_x = data_wmh['px_train'][:]
+        orig_data_res_y = data_wmh['py_train'][:]
+        orig_data_res_z = data_wmh['pz_train'][:]
+        orig_data_siz_x = data_wmh['nx_train'][:]
+        orig_data_siz_y = data_wmh['ny_train'][:]
+        orig_data_siz_z = data_wmh['nz_train'][:]
 
         num_train_subjects = orig_data_siz_z.shape[0] 
 
