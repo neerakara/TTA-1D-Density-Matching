@@ -531,7 +531,8 @@ def do_data_augmentation_on_3d_labels(labels,
                                       rot_min,
                                       rot_max,
                                       scale_min,
-                                      scale_max):
+                                      scale_max,
+                                      do_rot90 = False):
     
     labels_ = np.copy(labels[0,...])
         
@@ -566,10 +567,10 @@ def do_data_augmentation_on_3d_labels(labels,
         
         for zz in range(labels_.shape[0]):
             labels_[zz,:,:] = scipy.ndimage.interpolation.rotate(labels_[zz,:,:],
-                                                            reshape = False,
-                                                            angle = random_angle,
-                                                            axes = (1, 0),
-                                                            order = 0)
+                                                                 reshape = False,
+                                                                 angle = random_angle,
+                                                                 axes = (1, 0),
+                                                                 order = 0)
             
     # ========
     # scaling
@@ -588,7 +589,16 @@ def do_data_augmentation_on_3d_labels(labels,
                                              mode = 'constant')
     
             labels_[zz,:,:] = crop_or_pad_slice_to_size(labels_i_tmp, n_x, n_y)
-        
+
+    # ========
+    # 90 degree rotation
+    # ========
+    if do_rot90 == True:
+        if np.random.rand() < data_aug_ratio:
+            num_rotations = np.random.randint(1, 4) # 1 / 2 / 3
+            for zz in range(labels_.shape[0]): # assumes same dimensionality in x and y directions
+                labels_[zz,:,:] = np.rot90(labels_[zz,:,:], k=num_rotations)
+
     return np.expand_dims(labels_, axis=0)
 
 # ===============================================================
@@ -726,24 +736,38 @@ def make_noise_masks_3d(shape,
         else:
             r = np.random.randint(1, mask_params[0]+1)
             
+        # ====================
+        # Ensure that the box can fit in the volume is all dimensions
+        # ====================
+        r1 = np.minimum(r, shape[1]//2 - 2)
+        r2 = np.minimum(r, shape[2]//2 - 2)
+        r3 = np.minimum(r, shape[3]//2 - 2)
+
+        # ====================
         # choose the center of the noise box randomly 
-        mcx = np.random.randint(r+1, shape[1]-r-1)
-        mcy = np.random.randint(r+1, shape[2]-r-1)
-        mcz = np.random.randint(r+1, shape[3]-r-1)
+        # ====================
+        mcx = np.random.randint(r1+1, shape[1]-(r1+1))
+        mcy = np.random.randint(r2+1, shape[2]-(r2+1))
+        mcz = np.random.randint(r3+1, shape[3]-(r3+1))
             
+        # ====================
         # set the labels in this box to 0
-        blank_masks[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, :] = 0
+        # ====================
+        blank_masks[:, mcx-r1:mcx+r1, mcy-r2:mcy+r2, mcz-r3:mcz+r3, :] = 0
         
+        # ====================
+        # Replace the labels in the box, either with zeros or with the labels in a box of the same dimensions, somewhere else in the volume
+        # ====================
         if mask_type is 'squares_jigsaw':               
             # choose another box in the image from which copy labels to the previous box
-            mcx_src = np.random.randint(r+1, shape[1]-r-1)
-            mcy_src = np.random.randint(r+1, shape[2]-r-1)
-            mcz_src = np.random.randint(r+1, shape[3]-r-1)
-            wrong_labels[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, :] = labels_1hot[:, mcx_src-r:mcx_src+r, mcy_src-r:mcy_src+r, mcz_src-r:mcz_src+r, :]
+            mcx_src = np.random.randint(r1+1, shape[1]-(r1+1))
+            mcy_src = np.random.randint(r2+1, shape[2]-(r2+1))
+            mcz_src = np.random.randint(r3+1, shape[3]-(r3+1))
+            wrong_labels[:, mcx-r1:mcx+r1, mcy-r2:mcy+r2, mcz-r3:mcz+r3, :] = labels_1hot[:, mcx_src-r1:mcx_src+r1, mcy_src-r2:mcy_src+r2, mcz_src-r3:mcz_src+r3, :]
             
         elif mask_type is 'squares_zeros':                
             # set the labels in this box to zero
-            wrong_labels[:, mcx-r:mcx+r, mcy-r:mcy+r, mcz-r:mcz+r, 0] = 1
+            wrong_labels[:, mcx-r1:mcx+r1, mcy-r2:mcy+r2, mcz-r3:mcz+r3, 0] = 1
     
     return blank_masks, wrong_labels
 

@@ -58,20 +58,17 @@ def save_samples_downsampled(y,
                              cmap='tab20'):
         
     plt.figure(figsize=[20,10])
+    vis_ids = np.arange(0, y.shape[0], y.shape[0]//8)
     
-    for i in range(4):
-    
-        for j in range(8):
+    for j in range(8):
         
-            plt.subplot(4, 8, 8*i+j+1)
-            
-            if add_pixel_each_label:
-                labels_this_slice = add_1_pixel_each_class(y[8*i+j,:,:])
-            else:
-                labels_this_slice = y[8*i+j,:,:]
-                
-            plt.imshow(labels_this_slice, cmap=cmap)
-            plt.colorbar()
+        plt.subplot(1, 8, j+1)
+        if add_pixel_each_label:
+            labels_this_slice = add_1_pixel_each_class(y[vis_ids[j],:,:])
+        else:
+            labels_this_slice = y[vis_ids[j],:,:]
+        plt.imshow(labels_this_slice, cmap=cmap)
+        plt.colorbar()
 
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()

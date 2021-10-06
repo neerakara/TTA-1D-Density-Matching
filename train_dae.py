@@ -46,7 +46,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
+parser.add_argument('--train_dataset', default = "CSF") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 
@@ -174,7 +174,8 @@ def get_batch(labels,
                                                                 rot_min = args.rot_min,
                                                                 rot_max = args.rot_max,
                                                                 scale_min = args.scale_min,
-                                                                scale_max = args.scale_max)
+                                                                scale_max = args.scale_max,
+                                                                do_rot90 = args.train_dataset in ['HVHD', 'CSF', 'UHE'])
     
     # ==================    
     # make labels 1-hot

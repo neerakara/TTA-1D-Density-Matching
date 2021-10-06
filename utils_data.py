@@ -63,7 +63,7 @@ def load_labels_3d(train_dataset,
         logging.info('Data root directory: ' + sys_config.orig_data_root_mnms)
 
         data_mnms = data_mnms_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_mnms,
-                                                             preprocessing_folder = sys_config.orig_data_root_mnms,
+                                                             preprocessing_folder = sys_config.preproc_folder_mnms,
                                                              size = image_size,
                                                              target_resolution = target_resolution,
                                                              force_overwrite = False,
