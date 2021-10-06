@@ -13,6 +13,7 @@ import data.data_nci_3d as data_nci_3d
 import data.data_mnms_3d as data_mnms_3d
 import data.data_scgm_3d as data_scgm_3d
 import data.data_wmh_3d as data_wmh_3d
+import data.data_hcp_3d as data_hcp_3d
 
 # other imports
 import logging
@@ -139,6 +140,45 @@ def load_labels_3d(train_dataset,
         orig_data_siz_z = data_wmh['nz_train'][:]
 
         num_train_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # HCP T1 / T2
+    # ================================================================
+    elif train_dataset in ['HCPT1', 'HCPT2']:
+
+        logging.info('Reading ' + str(train_dataset) +  ' images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_hcp)
+        
+        data_brain_train = data_hcp_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                                   preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                                   idx_start = 0,
+                                                                   idx_end = 20,             
+                                                                   protocol = train_dataset[-2:],
+                                                                   size = image_size,
+                                                                   depth = 256,
+                                                                   target_resolution = target_resolution)
+        
+        gttr = data_brain_train['labels']
+
+        orig_data_res_x = data_brain_train['px'][:]
+        orig_data_res_y = data_brain_train['py'][:]
+        orig_data_res_z = data_brain_train['pz'][:]
+        orig_data_siz_x = data_brain_train['nx'][:]
+        orig_data_siz_y = data_brain_train['ny'][:]
+        orig_data_siz_z = data_brain_train['nz'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+        data_brain_val = data_hcp_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_hcp,
+                                                                 preprocessing_folder = sys_config.preproc_folder_hcp,
+                                                                 idx_start = 20,
+                                                                 idx_end = 25,             
+                                                                 protocol = train_dataset[-2:],
+                                                                 size = image_size,
+                                                                 depth = 256,
+                                                                 target_resolution = target_resolution)
+        
+        gtvl = data_brain_val['labels']
 
     return (gttr, # 0
             gtvl, # 1

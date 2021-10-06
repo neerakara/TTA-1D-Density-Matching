@@ -77,13 +77,16 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         # size, resolution, etc.
         # =================================
-        image_size = (256, 256)
         nlabels = 15
+        image_size = (256, 256)
         target_resolution = (0.7, 0.7)
+        
+        image_size_3d = (64, 256, 256)
+        target_resolution_3d = (2.8, 0.7, 0.7)
         downsampling_factor_x = 4
         downsampling_factor_y = 1
         downsampling_factor_z = 1
-        
+
         if train_dataset == 'STANFORD':
             image_depth_tr = 132
         else:

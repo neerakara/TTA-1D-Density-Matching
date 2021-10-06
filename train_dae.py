@@ -117,7 +117,7 @@ logging.info('Validation Labels: %s' %str(gtvl.shape))
 # ==========================
 # visualize
 # ==========================
-visualize_training_data = True
+visualize_training_data = False
 if visualize_training_data:
     for subject_num in range(gttr.shape[0]):
         utils_vis.save_samples_downsampled(gttr[subject_num, ...], savepath = log_dir_dae + 'tr_image_' + str(subject_num+1) + '.png')
