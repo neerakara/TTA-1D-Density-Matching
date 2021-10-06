@@ -10,6 +10,7 @@ import data.data_scgm as data_scgm
 
 # 3D dataset loaders
 import data.data_nci_3d as data_nci_3d
+import data.data_mnms_3d as data_mnms_3d
 
 # other imports
 import logging
@@ -50,6 +51,34 @@ def load_labels_3d(train_dataset,
         orig_data_siz_x = data_pros['nx_train'][:]
         orig_data_siz_y = data_pros['ny_train'][:]
         orig_data_siz_z = data_pros['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+    # ================================================================
+    # NCI
+    # ================================================================
+    elif train_dataset in ['CSF', 'UHE', 'HVHD']:
+    
+        logging.info('Reading - ' + train_dataset + ' labels...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_mnms)
+
+        data_mnms = data_mnms_3d.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_mnms,
+                                                             preprocessing_folder = sys_config.orig_data_root_mnms,
+                                                             size = image_size,
+                                                             target_resolution = target_resolution,
+                                                             force_overwrite = False,
+                                                             sub_dataset = train_dataset)
+        
+        
+        gttr = data_mnms['labels_train']
+        gtvl = data_mnms['labels_validation']
+        
+        orig_data_res_x = data_mnms['px_train'][:]
+        orig_data_res_y = data_mnms['py_train'][:]
+        orig_data_res_z = data_mnms['pz_train'][:]
+        orig_data_siz_x = data_mnms['nx_train'][:]
+        orig_data_siz_y = data_mnms['ny_train'][:]
+        orig_data_siz_z = data_mnms['nz_train'][:]
 
         num_train_subjects = orig_data_siz_z.shape[0] 
 
