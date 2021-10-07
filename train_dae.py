@@ -71,7 +71,7 @@ parser.add_argument('--scale_max', type = float, default = 1.1)
 
 # Learning rate settings
 parser.add_argument('--dae_learning_rate', type = float, default = 0.0001) # 0.001 / 0.0005 / 0.0001 
-parser.add_argument('--dae_runnum', type = int, default = 1) # 1 / 2 / 3
+parser.add_argument('--dae_runnum', type = int, default = 2) # 1 / 2 / 3
 
 # parse arguments
 args = parser.parse_args()

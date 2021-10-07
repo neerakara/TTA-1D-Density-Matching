@@ -70,7 +70,7 @@ parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 1e-4) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
-parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
+parser.add_argument('--tta_runnum', type = int, default = 2) # 1 / 2 / 3
 
 # whether to print debug stuff or not
 parser.add_argument('--debug', type = int, default = 0) # 1 / 0
@@ -548,7 +548,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                 summary_writer.add_summary(sess.run(dae_dice_summary, feed_dict={dae_dice_pl: dae_dice}), step-1)
                 
                 # log
-                logging.info('Dice (prediction, ground truth) at TTA step ' + str(step-1) + ': ' + str(np.round(np.mean(dice_wrt_gt[1:]), 3)))
+                logging.info('Dice (prediction, ground truth) at TTA step ' + str(step-1) + ': ' + str(np.round(dice_wrt_gt, 3)))
                 logging.info('Dice (prediction, DAE output) at TTA step ' + str(step-1) + ': ' + str(np.round(dae_dice, 3)))
 
                 if step == 1:
