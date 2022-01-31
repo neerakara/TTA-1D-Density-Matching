@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # ==================================================================
 parser = argparse.ArgumentParser(prog = 'PROG')
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "site2") # RUNMC / CSF / UMC / HCPT1 / site2
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC / CSF / UMC / HCPT1 / site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Batch settings

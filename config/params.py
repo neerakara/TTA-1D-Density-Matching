@@ -218,7 +218,7 @@ def get_dataset_dependent_params(train_dataset,
         # =================================
         tta_max_steps = 1001 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
         tta_model_saving_freq = 50
-        tta_vis_freq = 10
+        tta_vis_freq = 50
 
         # =================================
         # Batch sizes for SD Gaussian / KDE computation

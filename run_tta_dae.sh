@@ -1,6 +1,6 @@
 #!/bin/bash
 
-filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_dae.py
+filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_dae2.py
 tr_runnum=1
 bsize=8 # (2 for site1 in spine datasets, 8 for all others)
 lr=0.001
@@ -9,14 +9,14 @@ lr=0.001
 # for ttavars in 'AdaptAxAf'
 for ttavars in 'NORM'
 do
-    for ts_dataset in 'BMC' 'UCL' 'HK' 'BIDMC' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
+    for ts_dataset in 'USZ' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
     do   
         
         # run transfer learning for each test dataset, with the appropriate
         # 1. source dataset 
         # 2. cross validation fold number
         if [ "$ts_dataset" == "BMC" -o "$ts_dataset" == "USZ" ]; then
-            for sub in $(seq 0 9)
+            for sub in $(seq 5 5) # $(seq 0 9)
             do
                 bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'RUNMC' $tr_runnum $ts_dataset 1 $sub $ttavars $lr $bsize
             done
@@ -64,7 +64,7 @@ do
             done
         
         elif [ "$ts_dataset" == "CALTECH" ]; then
-            for sub in $(seq 0 9)
+            for sub in $(seq 1 9)
             do
                 bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'HCPT1' $tr_runnum $ts_dataset 1 $sub $ttavars $whichaes $lam $lr $bsize
             done

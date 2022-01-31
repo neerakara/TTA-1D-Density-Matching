@@ -4,7 +4,7 @@ filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_em.py
 tr_runnum=1
 bsize=8
 
-for ts_dataset in 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
+for ts_dataset in 'UHE' 'HVHD' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
 do   
     
     # run transfer learning for each test dataset, with the appropriate
@@ -27,7 +27,7 @@ do
         done
     
     elif [ "$ts_dataset" == "UHE" -o "$ts_dataset" == "HVHD" ]; then
-        for sub in $(seq 0 9)
+        for sub in $(seq 0 19)
         do
             bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'CSF' $tr_runnum $ts_dataset 1 $sub $bsize
         done

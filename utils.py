@@ -798,23 +798,23 @@ def rescale_image_and_label(image,
                                        mode = 'constant')
 
     # RESCALING TYPE 1
-    # label_onehot = make_onehot(label, num_classes)
-    # label_onehot_rescaled = transform.rescale(label_onehot,
-    #                                           scale_vector,
-    #                                           order=1,
-    #                                           preserve_range=True,
-    #                                           multichannel=True,
-    #                                           mode='constant')
-    # label_rescaled = np.argmax(label_onehot_rescaled, axis=-1)
+    label_onehot = make_onehot(label, num_classes)
+    label_onehot_rescaled = transform.rescale(label_onehot,
+                                              scale_vector,
+                                              order=1,
+                                              preserve_range=True,
+                                              multichannel=True,
+                                              mode='constant')
+    label_rescaled = np.argmax(label_onehot_rescaled, axis=-1)
 
     # RESCALING TYPE 2
-    label_rescaled = transform.rescale(label,
-                                       scale_vector,
-                                       order=0,
-                                       preserve_range=True,
-                                       multichannel=False,
-                                       mode='constant',
-                                       anti_aliasing = False)
+    # label_rescaled = transform.rescale(label,
+    #                                    scale_vector,
+    #                                    order=0,
+    #                                    preserve_range=True,
+    #                                    multichannel=False,
+    #                                    mode='constant',
+    #                                    anti_aliasing = False)
         
     # =================
     # crop / pad

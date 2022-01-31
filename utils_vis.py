@@ -27,6 +27,33 @@ def add_1_pixel_each_class(arr, nlabels=15):
 
 # ==========================================================
 # ==========================================================
+def save_xn_yd(xn, yd, savepath, step, dpi = 100):
+        
+    plt.figure(figsize=[40,20])
+    plt.subplot(121); plt.imshow(xn, cmap='gray'); plt.clim([0, 255]); plt.axis('off'); plt.title('Normalized Image', fontdict = {'fontsize' : 40})
+    plt.subplot(122); plt.imshow(yd, cmap='tab20'); plt.axis('off'); plt.title('Denoised Labels', fontdict = {'fontsize' : 40})
+    plt.subplots_adjust(wspace=0.05, hspace=0.05)
+    plt.suptitle('Step = ' + step, fontsize=40)
+    plt.savefig(savepath, bbox_inches='tight', pad_inches = 0, dpi = dpi) # 
+    plt.margins(0,0)
+    plt.close()
+
+# ==========================================================
+# ==========================================================
+def save_xn_y_yd(xn, y, yd, savepath, step, dpi = 100):
+        
+    plt.figure(figsize=[60,20])
+    plt.subplot(131); plt.imshow(xn, cmap='gray'); plt.clim([0, 255]); plt.axis('off'); plt.title('Normalized Image', fontdict = {'fontsize' : 40})
+    plt.subplot(132); plt.imshow(y, cmap='tab20'); plt.axis('off'); plt.title('Predicted Labels', fontdict = {'fontsize' : 40})
+    plt.subplot(133); plt.imshow(yd, cmap='tab20'); plt.axis('off'); plt.title('Denoised Labels', fontdict = {'fontsize' : 40})
+    plt.subplots_adjust(wspace=0.05, hspace=0.05)
+    plt.suptitle('Step = ' + step, fontsize=40)
+    plt.savefig(savepath, bbox_inches='tight', pad_inches = 0, dpi = dpi) # 
+    plt.margins(0,0)
+    plt.close()
+
+# ==========================================================
+# ==========================================================
 def save_single_image(image,
                       savepath,
                       nlabels=3,
@@ -47,7 +74,8 @@ def save_single_image(image,
     plt.axis('off')
     if colorbar:
         plt.colorbar()
-    plt.savefig(savepath, bbox_inches='tight', dpi=dpi)
+    plt.savefig(savepath, bbox_inches='tight', pad_inches = 0, dpi = dpi) # 
+    plt.margins(0,0)
     plt.close()
 
 # ==========================================================
@@ -289,11 +317,12 @@ def write_image_summaries(step,
                           xn,
                           y,
                           y_gt,
+                          y_denoised, # Added this now. Works only for TTA-DAE. Need to pass the ground truth twice in other methods.
                           dx = 0,
                           dy = 0):
     
     # stitch images
-    stitched_image = stitch_images(x, xn, y, y_gt, dx, dy)
+    stitched_image = stitch_images(x, xn, y, y_gt, y_denoised, dx, dy)
     
     # make shape and type like tensorboard wants
     final_image = prepare_for_tensorboard(stitched_image)
@@ -314,19 +343,20 @@ def normalize_and_cast_to_uint8(x):
 # ================================================================
 # function to stitch all images of a particular iteration together
 # ================================================================
-def stitch_images(x, xn, y, y_gt, dx, dy):
+def stitch_images(x, xn, y, y_gt, y_denoised, dx, dy):
         
     nx, ny = x.shape[1:]
     nx = nx - 2*dx
     ny = ny - 2*dy
-    stitched_image = np.zeros((4*nx, 5*ny), dtype = np.float32)
+    stitched_image = np.zeros((5*nx, 5*ny), dtype = np.float32)
     vis_ids = np.linspace(0, x.shape[0], 9, dtype=np.uint8)[2:7]
 
     for i in range(5):
         sx = 0; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = x[vis_ids[i], dx:x.shape[1]-dx, dy:x.shape[2]-dy]
         sx = 1; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = xn[vis_ids[i], dx:xn.shape[1]-dx, dy:xn.shape[2]-dy]
         sx = 2; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y[vis_ids[i], dx:y.shape[1]-dx, dy:y.shape[2]-dy]
-        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[vis_ids[i], dx:y_gt.shape[1]-dx, dy:y_gt.shape[2]-dy]
+        sx = 3; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_denoised[vis_ids[i], dx:y.shape[1]-dx, dy:y.shape[2]-dy]
+        sx = 4; sy = i; stitched_image[sx*nx:(sx+1)*nx, sy*ny:(sy+1)*ny] = y_gt[vis_ids[i], dx:y_gt.shape[1]-dx, dy:y_gt.shape[2]-dy]
     
     return stitched_image
 
@@ -839,3 +869,49 @@ def plot_kdes_for_sd_and_td(kdes_td_subject,
     
     plt.savefig(savepath, bbox_inches='tight')
     plt.close()
+
+# ==========================================================
+# ==========================================================
+def save_indivudual_figures_tta_foe(step,
+                                    x, xn, y, y_gt,
+                                    tr_cnn_mus, tr_cnn_vars, ts_cnn_mu, ts_cnn_var,
+                                    tr_pca_mus, tr_pca_vars, ts_pca_mu, ts_pca_var,
+                                    savedir):
+    
+    # show images and labels
+    # for vid in [np.linspace(0, x.shape[0], 9, dtype=np.uint8)[4], np.linspace(0, x.shape[0], 9, dtype=np.uint8)[5], np.linspace(0, x.shape[0], 9, dtype=np.uint8)[6]]:
+    for vid in [np.linspace(0, x.shape[0], 9, dtype=np.uint8)[5]]:
+        if step == 0:
+            save_single_image(np.rot90(x[vid,:,:],k=-1), savedir + 'step' + str(step) + '_x_' + str(vid) + '.png', 2, False, 'gray', False, [0.0, 1.5], 100)
+            save_single_image(np.rot90(y_gt[vid,:,:],k=-1), savedir + 'step' + str(step) + '_y_gt_' + str(vid) + '.png', 2, False, 'tab20', False, [], 100)
+        save_single_image(np.rot90(xn[vid,:,:],k=-1), savedir + 'step' + str(step) + '_xn_' + str(vid) + '.png', 2, False, 'gray', False, [0.0, 1.5], 100)
+        save_single_image(np.rot90(y[vid,:,:],k=-1), savedir + 'step' + str(step) + '_y_' + str(vid) + '.png', 2, False, 'tab20', False, [], 100)
+
+    # show pdf overlap for cnn experts
+    for c_layer in [480]: # [0, 32, 96, 224, 480, 608, 672, 704]:
+        for delta in [0,1]:
+            c = c_layer + delta
+            # save cnn expert pdfs
+            plt.figure(figsize=[5,5])
+            x = np.linspace(tr_cnn_mus[0,c] - 4*np.sqrt(tr_cnn_vars[0,c]), tr_cnn_mus[0,c] + 4*np.sqrt(tr_cnn_vars[0,c]), 100)
+            for s in range(tr_cnn_mus.shape[0]):
+                plt.plot(x, norm.pdf(x, tr_cnn_mus[s,c], np.sqrt(tr_cnn_vars[s,c])), 'b')
+            plt.plot(x, norm.pdf(x, ts_cnn_mu[c], np.sqrt(ts_cnn_var[c])), 'r')
+            if c_layer < 700:
+                plt.ylim([0.0, 0.6])
+            else:
+                plt.ylim([0.0, 30.0])
+            plt.savefig(savedir + 'step' + str(step) + '_pdfs_cnn_c' + str(c) + '.png')
+            plt.close()
+
+    # show pdf overlap for pca experts
+    for pc in [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]:
+        # save
+        plt.figure(figsize=[5,5])
+        x = np.linspace(tr_pca_mus[0,pc] - 4*np.sqrt(tr_pca_vars[0,pc]), tr_pca_mus[0,pc] + 4*np.sqrt(tr_pca_vars[0,pc]), 100)
+        for s in range(tr_pca_mus.shape[0]):
+            plt.plot(x, norm.pdf(x, tr_pca_mus[s,pc], np.sqrt(tr_pca_vars[s,pc])), 'b')
+        plt.plot(x, norm.pdf(x, ts_pca_mu[pc], np.sqrt(ts_pca_var[pc])), 'r')
+        plt.ylim([0.0, 1.2])
+        plt.savefig(savedir + 'step' + str(step) + '_pdfs_pca_pc' + str(pc) + '.png')
+        plt.close()

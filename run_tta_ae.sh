@@ -6,15 +6,11 @@ lam=1.0 # lambda_spectral
 bsize=8 # (2 for site1 in spine datasets, 8 for all others)
 lr=0.00001
 
-for ttavars in 'AdaptAx'
-# for ttavars in 'AdaptAxAf'
-# for ttavars in 'NORM'
+for ttavars in 'AdaptAxAf' # AdaptAx / AdaptAxAf / NORM
 do
-    for whichaes in 'xn'
-    # for whichaes in 'xn_y' # 'xn_f1_f2_f3_y'
-    # for whichaes in 'xn' 'xn_y' 'xn_f1_f2_f3_y'
+    for whichaes in 'xn_f1_f2_f3_y' # 'xn' 'xn_y' 'xn_f1_f2_f3_y'
     do
-        for ts_dataset in 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
+        for ts_dataset in 'USZ' 'UCL' 'HK' 'BIDMC' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
         do   
             
             # run transfer learning for each test dataset, with the appropriate
@@ -36,7 +32,7 @@ do
                 done
             
             elif [ "$ts_dataset" == "UHE" -o "$ts_dataset" == "HVHD" ]; then
-                for sub in $(seq 0 9)
+                for sub in $(seq 0 19)
                 do
                     bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'CSF' $tr_runnum $ts_dataset 1 $sub $ttavars $whichaes $lam $lr $bsize
                 done
@@ -62,7 +58,7 @@ do
             elif [ "$ts_dataset" == "NUHS" ]; then
                 for ts_cv in 1 2
                 do
-                    for sub in $(seq 1 4)
+                    for sub in $(seq 0 4)
                     do
                         bash /cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/run.sh $filename 'UMC' $tr_runnum $ts_dataset $ts_cv $sub $ttavars $whichaes $lam $lr $bsize
                     done

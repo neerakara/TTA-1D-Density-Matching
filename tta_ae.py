@@ -49,7 +49,7 @@ parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | C
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
+parser.add_argument('--test_dataset', default = "HK") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-for tr_dataset in 'RUNMC' # 'HCPT1' 'UMC' 'CSF' 'site2' # 'RUNMC' 'HCPT1' 'UMC' 'CSF' 'site2'
+for tr_dataset in 'HCPT1' # 'HCPT1' 'UMC' 'CSF' 'site2' # 'RUNMC' 'HCPT1' 'UMC' 'CSF' 'site2'
 do
     filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_dae.py
     tr_run_number=1

@@ -21,7 +21,7 @@ fname_tta_em=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_em.py
 fname_tta_ae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_ae.py
 fname_train_ae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_ae.py
 # Test-Time Adaptation using Denoising Autoencoders (Karani et al, MedIA 2021)
-fname_tta_dae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_dae.py
+fname_tta_dae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_dae2.py
 fname_train_dae=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/train_dae.py
 # Test-Time Adaptation using Fields of Experts (Ours)
 fname_tta_foe=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_foe.py
@@ -88,7 +88,7 @@ elif [ "$1" == "$fname_tta_dae" ]; then
     --b_size $9
 
 elif [ "$1" == "$fname_train_dae" ]; then
-    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 09:59 -oo /cluster/home/nkarani/logs/ python $1 \
+    bsub -R "rusage[mem=4000,ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" -W 29:59 -oo /cluster/home/nkarani/logs/ python $1 \
     --train_dataset $2 \
     --tr_run_number $3
 

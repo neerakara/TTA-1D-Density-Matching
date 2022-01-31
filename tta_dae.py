@@ -45,13 +45,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 parser = argparse.ArgumentParser(prog = 'PROG')
 
 # Training dataset and run number
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
+parser.add_argument('--train_dataset', default = "HCPT1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
+parser.add_argument('--test_dataset', default = "CALTECH") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
-parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
+parser.add_argument('--test_sub_num', type = int, default = 2) # 0 to 19
 
 # TTA base string
 parser.add_argument('--tta_string', default = "tta/")
@@ -68,9 +68,9 @@ parser.add_argument('--b_size_dae', type = int, default = 1)
 parser.add_argument('--accum_gradients', type = int, default = 1) # 0 / 1
 
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 1e-4) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 0.001) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
-parser.add_argument('--tta_runnum', type = int, default = 2) # 1 / 2 / 3
+parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
 # whether to print debug stuff or not
 parser.add_argument('--debug', type = int, default = 0) # 1 / 0
@@ -87,6 +87,8 @@ nlabels = dataset_params[1]
 target_resolution = dataset_params[2]
 image_depth_ts = dataset_params[4]
 tta_max_steps = dataset_params[6]
+if args.train_dataset == 'HCPT1': # for TTA-DAE, for brain datasets, we undersample in the z-direction, so need more iterations here.
+    tta_max_steps = 4*dataset_params[6]
 tta_model_saving_freq = dataset_params[7]
 tta_vis_freq = dataset_params[8]
 image_size_3d = dataset_params[11]

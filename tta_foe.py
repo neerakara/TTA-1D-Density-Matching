@@ -55,7 +55,7 @@ parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | C
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 # Test dataset and subject number
-parser.add_argument('--test_dataset', default = "USZ") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
+parser.add_argument('--test_dataset', default = "BMC") # BMC / USZ / UCL / BIDMC / HK (prostate) | UHE / HVHD (cardiac) | UMC / NUHS (brain WMH) | CALTECH (brain tissues) | site3
 parser.add_argument('--test_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--test_sub_num', type = int, default = 0) # 0 to 19
 
@@ -65,7 +65,7 @@ parser.add_argument('--tta_method', default = "FoE")
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM / AdaptAx / AdaptAxAf
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE
+parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0
 # How many moments to match and how?
@@ -82,16 +82,16 @@ parser.add_argument('--PCA_LAYER', default = 'layer_7_2') # layer_7_2 / logits /
 parser.add_argument('--PCA_LATENT_DIM', type = int, default = 10) # 10 / 50
 parser.add_argument('--PCA_KDE_ALPHA', type = float, default = 10.0) # 0.1 / 1.0 / 10.0
 parser.add_argument('--PCA_THRESHOLD', type = float, default = 0.8) # 0.8
-parser.add_argument('--PCA_LAMBDA', type = float, default = 1.0) # 0.0 / 1.0 / 0.1 / 0.01 
+parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0.1 / 0.01 
 
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 8)
 # (for spine "site1", this needs to set to 2 as volumes there contain less than 8 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 8 / 16
+parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
 parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
 
 # Learning rate settings
-parser.add_argument('--tta_learning_rate', type = float, default = 1e-5) # 0.001 / 0.0005 / 0.0001 
+parser.add_argument('--tta_learning_rate', type = float, default = 1e-4) # 0.001 / 0.0005 / 0.0001 
 parser.add_argument('--tta_learning_sch', type = int, default = 0) # 0 / 1
 parser.add_argument('--tta_runnum', type = int, default = 1) # 1 / 2 / 3
 
