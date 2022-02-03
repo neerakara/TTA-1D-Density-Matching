@@ -65,7 +65,7 @@ parser.add_argument('--tta_method', default = "FoE")
 # Which vars to adapt?
 parser.add_argument('--TTA_VARS', default = "NORM") # BN / NORM / AdaptAx / AdaptAxAf
 # Whether to use Gaussians / KDEs
-parser.add_argument('--PDF_TYPE', default = "KDE") # GAUSSIAN / KDE
+parser.add_argument('--PDF_TYPE', default = "GAUSSIAN") # GAUSSIAN / KDE
 # If KDEs, what smoothing parameter
 parser.add_argument('--KDE_ALPHA', type = float, default = 10.0) # 10.0
 # How many moments to match and how?
@@ -87,8 +87,8 @@ parser.add_argument('--PCA_LAMBDA', type = float, default = 0.1) # 0.0 / 1.0 / 0
 # Batch settings
 parser.add_argument('--b_size', type = int, default = 8)
 # (for spine "site1", this needs to set to 2 as volumes there contain less than 8 slices)
-parser.add_argument('--feature_subsampling_factor', type = int, default = 16) # 1 / 8 / 16
-parser.add_argument('--features_randomized', type = int, default = 1) # 1 / 0
+parser.add_argument('--feature_subsampling_factor', type = int, default = 1) # 1 / 8 / 16
+parser.add_argument('--features_randomized', type = int, default = 0) # 1 / 0
 
 # Learning rate settings
 parser.add_argument('--tta_learning_rate', type = float, default = 1e-4) # 0.001 / 0.0005 / 0.0001 
@@ -967,6 +967,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                                 image_normalized,
                                                 label_predicted,
                                                 test_image_gt,
+                                                test_image_gt,
                                                 padding_x,
                                                 padding_y)
 
@@ -1017,18 +1018,30 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                     num_batches = 0
                     for b_i in range(0, test_image.shape[0], b_size):
                         if b_i + b_size < test_image.shape[0]: # ignoring the rest of the image (that doesn't fit the last batch) for now.                    
-                            b_mu, b_var = sess.run([td_means, td_variances], feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
-                                                                                        delta_x_pl: padding_x,
-                                                                                        delta_y_pl: padding_y})
+                            b_cnn_mu, b_cnn_var = sess.run([td_means, td_variances], feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
+                                                                                                delta_x_pl: padding_x,
+                                                                                                delta_y_pl: padding_y})
+                            b_pca_mu, b_pca_var = sess.run([td_latents_means, td_latents_variances], feed_dict={images_pl: np.expand_dims(test_image[b_i:b_i+b_size, ...], axis=-1),
+                                                                                                                delta_x_pl: padding_x,
+                                                                                                                delta_y_pl: padding_y,
+                                                                                                                pca_mean_features_pl: pca_means,
+                                                                                                                pca_components_pl: pca_pcs,
+                                                                                                                pca_variance_pl: pca_vars})
                             if b_i == 0:
-                                test_mu = b_mu
-                                test_var = b_var
+                                test_cnn_mu = b_cnn_mu
+                                test_cnn_var = b_cnn_var
+                                test_pca_mu = b_pca_mu
+                                test_pca_var = b_pca_var
                             else:
-                                test_mu = test_mu + b_mu
-                                test_var = test_var + b_var
+                                test_cnn_mu = test_cnn_mu + b_cnn_mu
+                                test_cnn_var = test_cnn_var + b_cnn_var
+                                test_pca_mu = test_pca_mu + b_pca_mu
+                                test_pca_var = test_pca_var + b_pca_var
                             num_batches = num_batches + 1
-                    test_mu = test_mu / num_batches
-                    test_var = test_var / num_batches
+                    test_cnn_mu = test_cnn_mu / num_batches
+                    test_cnn_var = test_cnn_var / num_batches
+                    test_pca_mu = test_pca_mu / num_batches
+                    test_pca_var = test_pca_var / num_batches
 
                     utils_vis.write_gaussians(step,
                                               summary_writer,
@@ -1037,10 +1050,31 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                               display_pdfs_pl,
                                               np.mean(gaussians_sd, axis=0)[:,0],
                                               np.mean(gaussians_sd, axis=0)[:,1],
-                                              test_mu,
-                                              test_var,
+                                              test_cnn_mu,
+                                              test_cnn_var,
                                               log_dir_tta,
                                               nlabels)
+
+                    # save individual figures     
+                    track_tta_evolution = False
+                    if track_tta_evolution == True:
+                        if not tf.gfile.Exists(log_dir_tta + '/TTA_Evolution_Figs/'):
+                            tf.gfile.MakeDirs(log_dir_tta + '/TTA_Evolution_Figs/')
+                        # PCA PDF matching to be added
+                        utils_vis.save_indivudual_figures_tta_foe(step,
+                                                                  test_image,
+                                                                  image_normalized,
+                                                                  label_predicted,
+                                                                  test_image_gt,
+                                                                  gaussians_sd[:,:,0], # means for all subjects (axis 0) for all channels (axis 1)
+                                                                  gaussians_sd[:,:,1], # vars for all subjects (axis 0) for all channels (axis 1)
+                                                                  test_cnn_mu, # means for this test subject for all channels
+                                                                  test_cnn_var, # vars for this test subject for all channels
+                                                                  pca_latent_sd_kdes[:,:,0], # means for all subjects (axis 0) for all pcs (axis 1)
+                                                                  pca_latent_sd_kdes[:,:,1], # vars for all subjects (axis 0) for all pcs (axis 1)
+                                                                  test_pca_mu, # means for this test subject for all pcs
+                                                                  test_pca_var, # vars for this test subject for all pcs
+                                                                  log_dir_tta + '/TTA_Evolution_Figs/')
 
                 elif args.PDF_TYPE == 'KDE':
                     b_size = args.b_size

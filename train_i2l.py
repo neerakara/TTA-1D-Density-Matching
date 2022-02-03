@@ -22,8 +22,8 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 # ====================
 # Training dataset and run number
 # ====================
-parser.add_argument('--train_dataset', default = "UMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
-parser.add_argument('--tr_run_number', type = int, default = 2) # 1 / 
+parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
+parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--da_ratio', type = float, default = 0.25) # 0.0 / 0.25
 

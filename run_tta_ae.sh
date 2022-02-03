@@ -1,16 +1,16 @@
 #!/bin/bash
 
 filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_ae.py
-tr_runnum=1
+tr_runnum=5
 lam=1.0 # lambda_spectral
 bsize=8 # (2 for site1 in spine datasets, 8 for all others)
 lr=0.00001
 
 for ttavars in 'AdaptAxAf' # AdaptAx / AdaptAxAf / NORM
 do
-    for whichaes in 'xn_f1_f2_f3_y' # 'xn' 'xn_y' 'xn_f1_f2_f3_y'
+    for whichaes in 'xn_y' # 'xn' 'xn_y' 'xn_f1_f2_f3_y'
     do
-        for ts_dataset in 'USZ' 'UCL' 'HK' 'BIDMC' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
+        for ts_dataset in 'NUHS' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
         do   
             
             # run transfer learning for each test dataset, with the appropriate

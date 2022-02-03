@@ -718,6 +718,7 @@ if not tf.gfile.Exists(log_dir_tta + '/models/model.ckpt-999.index'):
                                                 test_image,
                                                 image_normalized,
                                                 label_predicted,
+                                                test_image_gt,
                                                 test_image_gt)
 
             step = step + 1

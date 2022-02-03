@@ -1,10 +1,10 @@
 #!/bin/bash
 
 filename=/cluster/home/nkarani/projects/dg_seg/methods/tta_abn/v1/tta_em.py
-tr_runnum=1
+tr_runnum=5
 bsize=8
 
-for ts_dataset in 'UHE' 'HVHD' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
+for ts_dataset in 'NUHS' # 'BMC' 'USZ' 'UCL' 'HK' 'BIDMC' 'UHE' 'HVHD' 'site1' 'site3' 'site4' 'NUHS' 'CALTECH'
 do   
     
     # run transfer learning for each test dataset, with the appropriate
