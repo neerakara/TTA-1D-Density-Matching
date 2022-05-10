@@ -7,6 +7,7 @@ import data.data_pirad_erc as data_pirad_erc
 import data.data_mnms as data_mnms
 import data.data_wmh as data_wmh
 import data.data_scgm as data_scgm
+import data.data_fets as data_fets
 
 # 3D dataset loaders
 import data.data_nci_3d as data_nci_3d
@@ -467,6 +468,39 @@ def load_training_data(train_dataset,
         gtvl = data_brain_val['labels']
         orig_data_siz_z_val = data_brain_val['nz'][:]
         num_val_subjects = orig_data_siz_z_val.shape[0]
+
+    # ================================================================
+    # NCI
+    # ================================================================
+    elif train_dataset in ['FETS1']:
+    
+        logging.info('Reading FeTS - ' + train_dataset + ' images...')    
+        logging.info('Data root directory: ' + sys_config.orig_data_root_fets)
+
+        data_brain_tumour = data_fets.load_and_maybe_process_data(input_folder = sys_config.orig_data_root_fets,
+                                                                  preprocessing_folder = sys_config.preproc_folder_fets,
+                                                                  size = image_size,
+                                                                  target_resolution = target_resolution,
+                                                                  force_overwrite = False,
+                                                                  sub_dataset = np.int(train_dataset[-1]),
+                                                                  cv_fold_num = cv_fold_num)
+        
+        imtr = data_brain_tumour['images_fl_train'] # Returning FLAIR images for now
+        gttr = data_brain_tumour['labels_train'] 
+        
+        orig_data_res_x = data_brain_tumour['px_train'][:]
+        orig_data_res_y = data_brain_tumour['py_train'][:]
+        orig_data_res_z = data_brain_tumour['pz_train'][:]
+        orig_data_siz_x = data_brain_tumour['nx_train'][:]
+        orig_data_siz_y = data_brain_tumour['ny_train'][:]
+        orig_data_siz_z = data_brain_tumour['nz_train'][:]
+
+        num_train_subjects = orig_data_siz_z.shape[0] 
+
+        imvl = data_brain_tumour['images_fl_validation'] # Returning FLAIR images for now
+        gtvl = data_brain_tumour['labels_validation']
+        orig_data_siz_z_val = data_brain_tumour['nz_validation'][:]
+        num_val_subjects = orig_data_siz_z_val.shape[0] 
                 
     return (imtr, # 0
             gttr, # 1

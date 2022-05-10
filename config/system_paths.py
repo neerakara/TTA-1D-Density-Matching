@@ -25,6 +25,7 @@ preproc_folder_acdc = os.path.join(data_root,'ACDC/')
 preproc_folder_mnms = os.path.join(data_root,'MnMs/')
 preproc_folder_wmh = os.path.join(data_root,'WMH/')
 preproc_folder_scgm = os.path.join(data_root,'SCGM/')
+preproc_folder_fets = os.path.join(data_root,'FeTS/')
 
 # ==================================================================
 # define dummy paths for the original data storage. directly using pre-processed data for now
@@ -38,3 +39,4 @@ orig_data_root_hcp = '/cluster/work/cvl/nkarani/data/preprocessed/segmentation/H
 orig_data_root_mnms = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/MnMs/Labeled/'
 orig_data_root_wmh = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/WMH_MICCAI2017/'
 orig_data_root_scgm = '/cluster/work/cvl/shared/bmicdatasets/original/Challenge_Datasets/SCGM/train/'
+orig_data_root_fets = ''

@@ -267,6 +267,42 @@ def get_dataset_dependent_params(train_dataset,
         b_size_compute_sd_pdfs = 2 
         b_size_compute_sd_gaussians = 0 # Use full images
 
+    elif train_dataset in ['FETS1', 'FETS2', 'FETS3']:
+
+        # =================================
+        # size, resolution, etc.
+        # =================================
+        nlabels = 2
+        image_size = (240, 240)
+        target_resolution = (1.0, 1.0)
+        
+        image_size_3d = (77, 240, 240) # orig size is 155,240,240
+        target_resolution_3d = (2.0, 1.0, 1.0)
+        downsampling_factor_x = 2
+        downsampling_factor_y = 1
+        downsampling_factor_z = 1
+
+        image_depth_tr = 155
+        image_depth_ts = 155
+
+        # =================================
+        # Whether to evaluate binary dice or over multiple classes
+        # =================================
+        whole_gland_results = True
+
+        # =================================
+        # number of TTA iterations
+        # =================================
+        tta_max_steps = 201 # Each step is an 'epoch' with num_batches = image_depth / args.b_size
+        tta_model_saving_freq = 50
+        tta_vis_freq = 10
+
+        # =================================
+        # Batch sizes for SD Gaussian / KDE computation
+        # =================================
+        b_size_compute_sd_pdfs = 16
+        b_size_compute_sd_gaussians = 16
+
     return (image_size, # 0
             nlabels, # 1
             target_resolution, # 2

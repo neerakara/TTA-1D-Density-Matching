@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(prog = 'PROG')
 # ====================
 # Training dataset and run number
 # ====================
-parser.add_argument('--train_dataset', default = "RUNMC") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine)
+parser.add_argument('--train_dataset', default = "FETS1") # RUNMC (prostate) | CSF (cardiac) | UMC (brain white matter hyperintensities) | HCPT1 (brain subcortical tissues) | site2 (Spine) | FETS1 (Brain Tumour)
 parser.add_argument('--tr_run_number', type = int, default = 1) # 1 / 
 parser.add_argument('--tr_cv_fold_num', type = int, default = 1) # 1 / 2
 parser.add_argument('--da_ratio', type = float, default = 0.25) # 0.0 / 0.25
@@ -80,6 +80,8 @@ def run_training():
     logging.info('Training Labels: %s' %str(gttr.shape)) # expected: [num_slices, img_size_x, img_size_y]
     logging.info('Validation Images: %s' %str(imvl.shape))
     logging.info('Validation Labels: %s' %str(gtvl.shape))
+    logging.info('Number of training subjects: %s' %str(loaded_tr_data[8]))
+    logging.info('Number of validation subjects: %s' %str(loaded_tr_data[12]))
     logging.info('============================================================')
                 
     # ================================================================
@@ -422,6 +424,12 @@ def iterate_minibatches(images,
         
         x = images[batch_indices, ...]
         y = labels[batch_indices, ...]
+
+        # ===========================
+        # For FeTS, combine all FG labels
+        # ===========================
+        if args.train_dataset in ['FETS1', 'FETS2', 'FETS3']:
+            y[y!=0] = 1
 
         # ===========================    
         # data augmentation (contrast changes + random elastic deformations)
